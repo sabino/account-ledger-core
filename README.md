@@ -1,12 +1,12 @@
 # In-Memory Account Ledger Core
 
-Status: requirements captured and design in progress. I have not selected the implementation language or test framework yet.
+Status: requirements captured and design in progress. I selected Python for the implementation and have not added source code yet.
 
 I am designing a small in-memory ledger with exact money, append-only history, and deterministic replay.
 
 ## How to run
 
-I have not added runnable commands in this initial scaffold because I have not selected the language or toolchain.
+I have not added runnable commands in this design scaffold. I will add them with the first executable slice.
 
 I will verify the final commands from a clean clone without relying on editor state or undocumented local services.
 
