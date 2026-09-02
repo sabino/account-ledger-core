@@ -42,6 +42,67 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(day_6_acc_2.interest_accrual, Money.parse(BHD, "0.004"))
         self.assertEqual(day_6_acc_2.closing_after_finalization, Money.parse(BHD, "10.008"))
 
+    def test_complete_six_day_projection_matches_the_oracle(self) -> None:
+        acc_1 = tuple(day.accounts[0] for day in self.report.days)
+        acc_2 = tuple(day.accounts[1] for day in self.report.days)
+
+        self.assertEqual(
+            tuple(row.closing_before_capitalization.minor_units for row in acc_1),
+            (25_000, 22_500, 62_500, 41_500, 39_000, 39_000),
+        )
+        self.assertEqual(
+            tuple(row.closing_after_finalization.minor_units for row in acc_1),
+            (25_000, 22_500, 62_500, 41_500, 39_000, 39_093),
+        )
+        self.assertEqual(
+            tuple(tuple(fee.minor_units for fee in row.fees) for row in acc_1),
+            ((), (2_500,), (), (2_500,), (2_500,), ()),
+        )
+        self.assertEqual(
+            tuple(row.interest_accrual.minor_units for row in acc_1),
+            (10, 9, 25, 17, 16, 16),
+        )
+        self.assertEqual(
+            tuple(
+                tuple((auth.authorization_id, auth.status, auth.active_hold.minor_units) for auth in row.authorizations)
+                for row in acc_1
+            ),
+            (
+                (),
+                (("Auth-A", AuthorizationStatus.ACTIVE, 20_000),),
+                (("Auth-A", AuthorizationStatus.ACTIVE, 20_000),),
+                (("Auth-A", AuthorizationStatus.SETTLED, 0),),
+                (
+                    ("Auth-A", AuthorizationStatus.SETTLED, 0),
+                    ("Auth-B", AuthorizationStatus.DECLINED, 0),
+                ),
+                (
+                    ("Auth-A", AuthorizationStatus.SETTLED, 0),
+                    ("Auth-B", AuthorizationStatus.DECLINED, 0),
+                ),
+            ),
+        )
+        self.assertEqual(
+            tuple(tuple(error.event_id for error in row.errors) for row in acc_1),
+            ((), (), (), ("E6",), (), ()),
+        )
+
+        self.assertEqual(
+            tuple(row.closing_before_capitalization.minor_units for row in acc_2),
+            (0, 0, 0, 0, 10_000, 10_000),
+        )
+        self.assertEqual(
+            tuple(row.closing_after_finalization.minor_units for row in acc_2),
+            (0, 0, 0, 0, 10_000, 10_008),
+        )
+        self.assertTrue(all(not row.fees for row in acc_2))
+        self.assertTrue(all(not row.authorizations for row in acc_2))
+        self.assertTrue(all(not row.errors for row in acc_2))
+        self.assertEqual(
+            tuple(row.interest_accrual.minor_units for row in acc_2),
+            (0, 0, 0, 0, 4, 4),
+        )
+
     def test_rendered_report_declares_cutoffs_and_key_outcomes(self) -> None:
         rendered = render_daily_report(self.report)
 

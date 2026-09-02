@@ -90,3 +90,7 @@ Seeing the day-by-day projection was more useful than seeing only final balances
 
 An arbitrary-size input exposed a flaw in my first parser. Multiplying a `Decimal` by the currency scale could consult the ambient decimal context before conversion to an integer, so a large exact value could be rounded unexpectedly. I replaced that path with lexical validation and direct integer construction of whole and fractional minor units.
 
+### 18:31:05 — Check · Test boundaries and all six days
+
+I expanded the suite beyond the happy path: invalid batches, duplicate identities, policy failures, idempotency, knowledge cutoffs, and the complete six-day report. I wanted a broken invariant to fail near its cause. The full projection also acted as a reconciliation table, making it difficult for one correct headline number to hide a wrong intermediate day.
+
