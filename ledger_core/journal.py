@@ -98,7 +98,13 @@ def append_batch(
     recorded_day: int,
     policy_version: str,
 ) -> Ledger:
-    """Validate and append one atomic commit, returning a new ledger value."""
+    """Append through the trusted storage boundary and return a new value.
+
+    This enforces record-level, currency, identity, and authorization-history
+    invariants atomically.  Complete command causality belongs to
+    ``process_event`` and ``finalize_interest``; application callers should use
+    those operations rather than manufacture journal facts directly.
+    """
 
     staged = tuple(facts)
     if not staged:

@@ -224,7 +224,12 @@ def render_daily_report(report: AssessmentReport) -> str:
             "Daily financial view "
             f"(final event knowledge through commit {report.known_through_commit}; "
             f"interest finalization commit {report.final_commit})"
-        )
+        ),
+        (
+            "  Fee rows retain their original assessment day; a later "
+            "value-dated reversal can make the final-known close positive "
+            "without deleting an already-booked fee."
+        ),
     ]
     for day in report.days:
         lines.append(f"Day {day.day}")

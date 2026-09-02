@@ -250,16 +250,24 @@ def finalize_interest(
             ),
         )
 
-    pre_capitalization_commit = latest_commit_sequence(ledger)
+    finalization_id = _interest_finalization_id(start_day, through_day)
+    fee_reconciled_ledger = _reconcile_overdraft_fees_through(
+        ledger,
+        policy,
+        start_day=start_day,
+        through_day=through_day,
+        recorded_day=through_day,
+        caused_by=f"{finalization_id}:fee-reconciliation",
+    )
+    pre_capitalization_commit = latest_commit_sequence(fee_reconciled_ledger)
     accrual_facts: list[InterestAccrual] = []
     capitalization_facts: list[Posting] = []
-    finalization_id = _interest_finalization_id(start_day, through_day)
 
-    for account in ledger.accounts:
+    for account in fee_reconciled_ledger.accounts:
         account_accruals: list[Money] = []
         for day in range(start_day, through_day + 1):
             basis = closing_balance(
-                ledger,
+                fee_reconciled_ledger,
                 account.account_id,
                 effective_through=day,
                 known_through=pre_capitalization_commit,
@@ -305,7 +313,7 @@ def finalize_interest(
         marker,
     )
     updated = append_batch(
-        ledger,
+        fee_reconciled_ledger,
         facts,
         recorded_day=through_day,
         policy_version=policy.version,
@@ -472,6 +480,7 @@ def _stage_event_facts(
         for posting in postings(ledger)
         if posting.direct_event_id == event.target_event_id
         and posting.account_id == event.account_id
+        and posting.kind is PostingKind.DEBIT
     )
     if not targets:
         return (
@@ -479,7 +488,7 @@ def _stage_event_facts(
                 _event_record_id(event.event_id),
                 event,
                 RejectionCode.REVERSAL_TARGET_NOT_FOUND,
-                f"no reversible posting exists for event {event.target_event_id}",
+                f"no reversible debit posting exists for event {event.target_event_id}",
             ),
         )
     already_reversed = frozenset(
@@ -537,18 +546,73 @@ def _new_overdraft_fees(
     direct_postings: tuple[Posting, ...],
     policy: AssessmentPolicy,
 ) -> tuple[Posting, ...]:
-    existing = postings(candidate)
-    generated: list[Posting] = []
     affected_from = min(posting.value_day for posting in direct_postings)
     horizon = latest_recorded_day(candidate)
+    return _missing_overdraft_fees(
+        candidate,
+        account,
+        policy,
+        start_day=affected_from,
+        through_day=horizon,
+        caused_by=event.event_id,
+    )
 
-    for day in range(affected_from, horizon + 1):
+
+def _reconcile_overdraft_fees_through(
+    ledger: Ledger,
+    policy: AssessmentPolicy,
+    *,
+    start_day: int,
+    through_day: int,
+    recorded_day: int,
+    caused_by: str,
+) -> Ledger:
+    generated: list[Posting] = []
+    for account in ledger.accounts:
+        generated.extend(
+            _missing_overdraft_fees(
+                ledger,
+                account,
+                policy,
+                start_day=start_day,
+                through_day=through_day,
+                caused_by=caused_by,
+                prior_generated=tuple(generated),
+            )
+        )
+    if not generated:
+        return ledger
+    return append_batch(
+        ledger,
+        generated,
+        recorded_day=recorded_day,
+        policy_version=policy.version,
+    )
+
+
+def _missing_overdraft_fees(
+    ledger: Ledger,
+    account: Account,
+    policy: AssessmentPolicy,
+    *,
+    start_day: int,
+    through_day: int,
+    caused_by: str,
+    prior_generated: tuple[Posting, ...] = (),
+) -> tuple[Posting, ...]:
+    existing = postings(ledger)
+    generated: list[Posting] = []
+
+    for day in range(start_day, through_day + 1):
         record_id = _fee_record_id(account.account_id, day)
-        if has_record_id(candidate, record_id):
+        if has_record_id(ledger, record_id) or any(
+            posting.record_id == record_id
+            for posting in (*prior_generated, *generated)
+        ):
             continue
         close = closing_balance_from_postings(
             account,
-            (*existing, *generated),
+            (*existing, *prior_generated, *generated),
             effective_through=day,
         )
         charge = fee_for_close(policy, account=account, closing=close)
@@ -562,7 +626,7 @@ def _new_overdraft_fees(
                 value_day=day,
                 kind=PostingKind.OVERDRAFT_FEE,
                 direct_event_id=None,
-                caused_by=event.event_id,
+                caused_by=caused_by,
             )
         )
     return tuple(generated)

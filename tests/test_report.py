@@ -108,6 +108,7 @@ class ReportTest(unittest.TestCase):
 
         self.assertIn("knowledge through commit 10", rendered)
         self.assertIn("interest finalization commit 11", rendered)
+        self.assertIn("retain their original assessment day", rendered)
         self.assertIn("Auth-B=declined(no hold)", rendered)
         self.assertIn("E6:authorization_not_found", rendered)
         self.assertIn("ACC-001: AED 0.93", rendered)

@@ -23,11 +23,13 @@ from ledger_core.model import (
     BHD,
     AuthorizationStatus,
     Credit,
+    Debit,
     EventAccepted,
     EventRejected,
     Money,
     PostingKind,
     RejectionCode,
+    ReversalRequested,
 )
 from ledger_core.policy import AssessmentPolicy
 from ledger_core.scenario import assessment_events, empty_assessment_ledger
@@ -338,6 +340,59 @@ class ReplayEngineTest(unittest.TestCase):
                 posting.direct_event_id == "LATE-1"
                 for posting in postings(result.ledger)
             )
+        )
+
+    def test_finalization_reconciles_fees_across_quiet_negative_days(self) -> None:
+        debit = Debit(
+            "quiet-negative",
+            1,
+            "ACC-001",
+            Money.parse(AED, "1.00"),
+            1,
+        )
+        processed = process_event(
+            empty_assessment_ledger(), debit, self.policy
+        )
+
+        finalization = finalize_interest(
+            processed.ledger,
+            self.policy,
+            start_day=1,
+            through_day=6,
+        )
+
+        self.assertEqual(
+            tuple(fee.value_day for fee in fee_postings(finalization.ledger)),
+            (1, 2, 3, 4, 5, 6),
+        )
+        self.assertEqual(
+            closing_balance(
+                finalization.ledger,
+                "ACC-001",
+                effective_through=6,
+            ),
+            Money.parse(AED, "-151.00"),
+        )
+
+    def test_reversal_is_narrowly_a_direct_debit_compensation(self) -> None:
+        replay = replay_events(
+            empty_assessment_ledger(), assessment_events()[:5], self.policy
+        )
+        reversal = ReversalRequested(
+            "settlement-reversal",
+            5,
+            "ACC-001",
+            "E5",
+            4,
+        )
+
+        result = process_event(replay.ledger, reversal, self.policy)
+
+        self.assertIsInstance(result.receipt, EventRejected)
+        assert isinstance(result.receipt, EventRejected)
+        self.assertIs(
+            result.receipt.code,
+            RejectionCode.REVERSAL_TARGET_NOT_FOUND,
         )
 
 
