@@ -80,3 +80,9 @@ I added a functional journal that returns new state instead of mutating old stat
 
 I encoded authorization, settlement, reversal, fee, installment, and interest choices as pure decisions, then applied those decisions through an atomic replay step. Accepted inputs produce their complete set of facts; rejected inputs move no money and retain a reason. This separation let me test “what should happen?” without also exercising storage mechanics, then test that the chosen effect was applied all-or-nothing.
 
+### 18:26:40 — Check · Make the program explain the whole result
+
+I added the complete daily view and executable verdicts for all eight claims, then hardened malformed money and repeated finalization behavior. I also chose the required red test: a backdated credit after interest finalization. It fails for a real reason—the bounded core cannot reopen the period and reconcile principal with capitalized interest—not because I deliberately broke a correct path.
+
+Seeing the day-by-day projection was more useful than seeing only final balances. It exposed when knowledge arrived, which value date changed, when a fee became eligible, and why a later compensating entry did not erase an independent fee.
+
