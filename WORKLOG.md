@@ -76,3 +76,7 @@ I started with immutable money values and typed events because every later calcu
 
 I added a functional journal that returns new state instead of mutating old state. A batch either validates completely or contributes no facts, posting identities are unique, and movements must balance by currency. This gave the replay engine a small trusted core and made earlier states available for knowledge-time questions.
 
+### 18:21:56 — Do · Keep policy decisions outside atomic replay
+
+I encoded authorization, settlement, reversal, fee, installment, and interest choices as pure decisions, then applied those decisions through an atomic replay step. Accepted inputs produce their complete set of facts; rejected inputs move no money and retain a reason. This separation let me test “what should happen?” without also exercising storage mechanics, then test that the chosen effect was applied all-or-nothing.
+

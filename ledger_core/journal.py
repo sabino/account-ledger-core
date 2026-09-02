@@ -72,6 +72,10 @@ def latest_commit_sequence(ledger: Ledger) -> int:
     return ledger.next_commit_sequence - 1
 
 
+def latest_recorded_day(ledger: Ledger) -> int:
+    return max((record.recorded_day for record in ledger.records), default=0)
+
+
 def account_for(ledger: Ledger, account_id: AccountId) -> Account:
     for account in ledger.accounts:
         if account.account_id == account_id:
@@ -81,6 +85,10 @@ def account_for(ledger: Ledger, account_id: AccountId) -> Account:
 
 def record_id_of(fact: JournalFact) -> str:
     return fact.record_id
+
+
+def has_record_id(ledger: Ledger, record_id: str) -> bool:
+    return any(record_id_of(record.fact) == record_id for record in ledger.records)
 
 
 def append_batch(
@@ -261,12 +269,33 @@ def closing_balance(
     if effective_through <= 0:
         raise JournalInvariantError("effective day must be positive")
     account = account_for(ledger, account_id)
+    relevant = tuple(
+        posting
+        for posting in postings(ledger, known_through=known_through)
+        if posting.kind not in excluding_kinds
+    )
+    return closing_balance_from_postings(
+        account,
+        relevant,
+        effective_through=effective_through,
+    )
+
+
+def closing_balance_from_postings(
+    account: Account,
+    candidate_postings: Iterable[Posting],
+    *,
+    effective_through: int,
+) -> Money:
+    """Project a balance from an arbitrary immutable posting snapshot."""
+
+    if effective_through <= 0:
+        raise JournalInvariantError("effective day must be positive")
     relevant = (
         posting.amount
-        for posting in postings(ledger, known_through=known_through)
-        if posting.account_id == account_id
+        for posting in candidate_postings
+        if posting.account_id == account.account_id
         and posting.value_day <= effective_through
-        and posting.kind not in excluding_kinds
     )
     return sum_money(relevant, currency=account.currency, start=account.opening_balance)
 
