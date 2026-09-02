@@ -1,0 +1,11 @@
+[project]
+name = "mal-account-ledger-core"
+version = "0.1.0"
+description = "A typed, in-memory account-ledger assessment core"
+requires-python = ">=3.12"
+
+[tool.pyright]
+include = ["ledger_core", "tests", "known_limitation", "replay.py"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+

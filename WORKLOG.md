@@ -52,3 +52,23 @@ I chose Python because the deliverable needed to be readable under discussion, n
 
 While writing out the mental model, I noticed that short acceptance labels could be confused with authorization identifiers. I renamed them to `Claim-1` through `Claim-8` and moved ambiguity labels to `AMB-*`. I also wrote down the difference between an input event, a policy decision, a journal fact, and a projection. No arithmetic changed; I was removing vocabulary that could make correct behavior hard to explain.
 
+### 14:45:56 — Check · Work the scenario by hand
+
+Before trusting code, I worked through authorizations, accepted and rejected events, postings, fees, daily closes, and interest seperately. I used that hand-worked result as the oracle for implementation. If the program disagreed, I wanted to investigate the transition where the disagreement began instead of adjusting an expected final balance until a test turned green.
+
+## 2026-09-02 — Reference experiments
+
+### 16:44:20 — Check · See what a real ledger engine would enforce
+
+I replayed the scenario in Formance Ledger v2.4.12. Balanced movements, metadata, and atomic execution mapped well to the model, and the numbers agreed with my selected interpretation. The useful lesson was the boundary: the engine could reject an invalid movement, but it could not tell me whether the assessment intended a partial capture or an automatic fee refund.
+
+### 17:39:30 — Check · Push schema and atomicity harder
+
+I repeated the experiment with stricter Numscript templates, schemas, and rejection probes. That made me more comfortable keeping the journal narrow and uncompromising while placing the assessment-specific choices in pure policy functions. I kept the architectural lesson and dropped the external dependency from the deliverable.
+
+## 2026-09-02 — Implementation
+
+### 18:14:06 — Do · Model money and events first
+
+I started with immutable money values and typed events because every later calculation depended on them. Amounts became integer minor units with an explicit currency scale and round-half-even behavior. I deliberately rejected exponent notation, excess precision, and cross-currency arithmetic rather than guessing what the caller meant.
+
