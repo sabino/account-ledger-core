@@ -265,6 +265,7 @@ class Account:
 
 class PostingKind(StrEnum):
     CREDIT = "credit"
+    INSTALLMENT_CREDIT = "installment_credit"
     DEBIT = "debit"
     SETTLEMENT = "settlement"
     REVERSAL = "reversal"
@@ -280,6 +281,7 @@ class AuthorizationStatus(StrEnum):
 
 class RejectionCode(StrEnum):
     ACCOUNT_NOT_FOUND = "account_not_found"
+    AUTHORIZATION_ACCOUNT_MISMATCH = "authorization_account_mismatch"
     AUTHORIZATION_ALREADY_EXISTS = "authorization_already_exists"
     AUTHORIZATION_NOT_FOUND = "authorization_not_found"
     AUTHORIZATION_NOT_ACTIVE = "authorization_not_active"
@@ -287,6 +289,7 @@ class RejectionCode(StrEnum):
     OVER_CAPTURE = "over_capture"
     REVERSAL_ALREADY_APPLIED = "reversal_already_applied"
     REVERSAL_TARGET_NOT_FOUND = "reversal_target_not_found"
+    UNSUPPORTED_FEE_CURRENCY = "unsupported_fee_currency"
     FINALIZED_PERIOD_CORRECTION_UNSUPPORTED = (
         "finalized_period_correction_unsupported"
     )
