@@ -1,0 +1,40 @@
+# Worklog
+
+All timestamps use America/Sao_Paulo (`UTC-03:00`).
+
+## How I kept the log
+
+I used a lightweight Plan–Do–Check–Act loop. I planned by turning uncertain wording into explicit questions, did the smallest useful piece, checked it against arithmetic and tests, and acted on what the checks exposed.
+
+The times below are real checkpoints, not claims that I worked continuously between them. When several related changes landed at the same recorded second, I describe them as one checkpoint instead of inventing a false minute-by-minute sequence. AI tools helped with research, independent review, implementation, tests, and editing. I made the final policy choices and remain responsible for the result.
+
+## 2026-09-01 — Preparation
+
+### 11:12:59 — Plan · Keep exploration separate from delivery
+
+I opened a private place for rough research before starting the deliverable. I knew I would have tentative calculations, copied references, and ideas I might later reject, and I did not want any of that to look like an accepted design by accident. My rule was simple: explore freely there, but move only reasoning I could explain and defend into the deliverable.
+
+## 2026-09-02 — Requirements and design
+
+### 11:11:00–12:05:57 — Plan · Learn where a ledger stops
+
+I spent this period trying to understand which parts of the problem belonged to ledger mechanics and which parts were business policy. I looked at write paths, read models, corrections, reconciliation, effective dates, issued reports, regulatory controls, and multicurrency boundaries.
+
+The important realization was that an append-only journal can preserve facts and enforce balanced movements, but it cannot decide what an ambiguous settlement or reversal should mean. I would need to state those choices myself. I also decided that a newly learned historical fact should change a current reconstruction without pretending the fact had always been known.
+
+### 12:16:28 — Plan · Read the prompt without changing the live form
+
+I started the assessment timer and read the prompt while the page showed `1d 23h left` and `0/2 complete`. I did not type into an answer field, upload anything, save, or submit. On the first pass I marked hard requirements, claims that looked deliberately wrong, and phrases such as “as of” and “exactly” that could change the result.
+
+### 12:19:21 — Plan · List the policy questions before choosing answers
+
+I wrote down the points I could not honestly derive from arithmetic alone: capture below a hold, missing authorizations, late value-dated fees, the reach of a reversal, installment remainders, and rounded interest. I resisted choosing a language at this stage because a convenient implementation should not decide the accounting contract.
+
+### 12:24:07 — Check · Preserve the wording I was reasoning from
+
+I kept an exact copy of the visible assessment text. I wanted to be able to return to the source wording whenever my interpretation started feeling obvious, because “obvious” was exactly where I was most likely to smuggle in an assumption.
+
+### 12:24:19 — Act · Start with the explanation, not the code
+
+I laid out the required documents, an architecture outline, an ambiguity log, and provisional refusals. I had not selected a language or framework. Starting this way forced me to show where judgment entered the solution and made it harder to retrofit a clean story after seeing the program output.
+
