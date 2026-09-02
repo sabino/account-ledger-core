@@ -226,8 +226,7 @@ def finalize_interest(
         assert isinstance(finalized, InterestFinalized)
         if (
             finalized.start_day != start_day
-            or
-            finalized.through_day != through_day
+            or finalized.through_day != through_day
             or prior_finalization.policy_version != policy.version
         ):
             raise AlreadyFinalizedError("interest was already finalized differently")

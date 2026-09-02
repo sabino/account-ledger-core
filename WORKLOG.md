@@ -86,3 +86,7 @@ I added the complete daily view and executable verdicts for all eight claims, th
 
 Seeing the day-by-day projection was more useful than seeing only final balances. It exposed when knowledge arrived, which value date changed, when a fee became eligible, and why a later compensating entry did not erase an independent fee.
 
+### 18:27:21 — Act · Replace context-sensitive amount parsing
+
+An arbitrary-size input exposed a flaw in my first parser. Multiplying a `Decimal` by the currency scale could consult the ambient decimal context before conversion to an integer, so a large exact value could be rounded unexpectedly. I replaced that path with lexical validation and direct integer construction of whole and fractional minor units.
+

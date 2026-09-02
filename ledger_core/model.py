@@ -8,8 +8,8 @@ edited in place.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
 from enum import StrEnum
+import re
 from typing import Self
 
 
@@ -69,22 +69,23 @@ class Money:
     def parse(cls, currency: Currency, text: str) -> Self:
         """Parse exact decimal text, rejecting unrepresentable precision."""
 
-        try:
-            decimal = Decimal(text)
-        except InvalidOperation as error:
-            raise MoneyPrecisionError(f"invalid {currency.code} amount: {text!r}") from error
+        match = re.fullmatch(r"([+-]?)(\d+)(?:\.(\d+))?", text)
+        if match is None:
+            raise MoneyPrecisionError(f"invalid {currency.code} amount: {text!r}")
 
-        if not decimal.is_finite():
-            raise MoneyPrecisionError(f"amount must be finite: {text!r}")
-
-        scaled = decimal * currency.minor_unit_factor
-        integral = scaled.to_integral_value()
-        if scaled != integral:
+        sign, whole_digits, fractional_digits = match.groups(default="")
+        if len(fractional_digits) > currency.decimal_places:
             raise MoneyPrecisionError(
                 f"{text!r} exceeds {currency.code} precision "
                 f"of {currency.decimal_places} decimal places"
             )
-        return cls(currency=currency, minor_units=int(integral))
+        padded_fraction = fractional_digits.ljust(currency.decimal_places, "0")
+        absolute_minor_units = (
+            int(whole_digits) * currency.minor_unit_factor
+            + (int(padded_fraction) if padded_fraction else 0)
+        )
+        minor_units = -absolute_minor_units if sign == "-" else absolute_minor_units
+        return cls(currency=currency, minor_units=minor_units)
 
     @classmethod
     def zero(cls, currency: Currency) -> Self:

@@ -27,6 +27,18 @@ class MoneyTest(unittest.TestCase):
         with self.assertRaises(MoneyPrecisionError):
             Money.parse(BHD, "1.0001")
 
+    def test_parse_is_exact_beyond_decimal_context_precision(self) -> None:
+        amount = Money.parse(AED, "1234567890123456789012345678.90")
+
+        self.assertEqual(
+            amount.minor_units,
+            123456789012345678901234567890,
+        )
+        self.assertEqual(
+            amount.format_amount(),
+            "1234567890123456789012345678.90",
+        )
+
     def test_cross_currency_arithmetic_is_rejected(self) -> None:
         with self.assertRaises(CurrencyMismatchError):
             _ = Money.parse(AED, "1.00") + Money.parse(BHD, "1.000")
