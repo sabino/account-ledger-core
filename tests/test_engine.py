@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from ledger_core.engine import (
+    AlreadyFinalizedError,
     DuplicateEventIdError,
     finalize_interest,
     process_event,
@@ -286,6 +287,58 @@ class ReplayEngineTest(unittest.TestCase):
         self.assertIs(second.ledger, first.ledger)
         self.assertEqual(second.final_commit, first.final_commit)
         self.assertEqual(second.capitalizations, first.capitalizations)
+
+    def test_finalization_idempotency_includes_the_complete_window(self) -> None:
+        replay = replay_events(
+            empty_assessment_ledger(), assessment_events(), self.policy
+        )
+        first = finalize_interest(
+            replay.ledger,
+            self.policy,
+            start_day=1,
+            through_day=6,
+        )
+
+        with self.assertRaises(AlreadyFinalizedError):
+            finalize_interest(
+                first.ledger,
+                self.policy,
+                start_day=2,
+                through_day=6,
+            )
+
+    def test_post_finalization_backdate_is_an_explicit_bounded_core_rejection(self) -> None:
+        replay = replay_events(
+            empty_assessment_ledger(), assessment_events(), self.policy
+        )
+        finalization = finalize_interest(
+            replay.ledger,
+            self.policy,
+            start_day=1,
+            through_day=6,
+        )
+        late_credit = Credit(
+            "LATE-1",
+            7,
+            "ACC-001",
+            Money.parse(AED, "100.00"),
+            3,
+        )
+
+        result = process_event(finalization.ledger, late_credit, self.policy)
+
+        self.assertIsInstance(result.receipt, EventRejected)
+        assert isinstance(result.receipt, EventRejected)
+        self.assertIs(
+            result.receipt.code,
+            RejectionCode.FINALIZED_PERIOD_CORRECTION_UNSUPPORTED,
+        )
+        self.assertFalse(
+            any(
+                posting.direct_event_id == "LATE-1"
+                for posting in postings(result.ledger)
+            )
+        )
 
 
 if __name__ == "__main__":

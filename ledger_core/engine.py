@@ -92,6 +92,7 @@ class ReplayResult:
 @dataclass(frozen=True, slots=True)
 class FinalizationResult:
     ledger: Ledger
+    start_day: int
     through_day: int
     pre_capitalization_commit: int
     final_commit: int
@@ -224,6 +225,8 @@ def finalize_interest(
         finalized = prior_finalization.fact
         assert isinstance(finalized, InterestFinalized)
         if (
+            finalized.start_day != start_day
+            or
             finalized.through_day != through_day
             or prior_finalization.policy_version != policy.version
         ):
@@ -231,6 +234,7 @@ def finalize_interest(
         commit = prior_finalization.commit_sequence
         return FinalizationResult(
             ledger=ledger,
+            start_day=start_day,
             through_day=through_day,
             pre_capitalization_commit=commit - 1,
             final_commit=commit,
@@ -250,7 +254,7 @@ def finalize_interest(
     pre_capitalization_commit = latest_commit_sequence(ledger)
     accrual_facts: list[InterestAccrual] = []
     capitalization_facts: list[Posting] = []
-    finalization_id = _interest_finalization_id(through_day)
+    finalization_id = _interest_finalization_id(start_day, through_day)
 
     for account in ledger.accounts:
         account_accruals: list[Money] = []
@@ -293,6 +297,7 @@ def finalize_interest(
 
     marker = InterestFinalized(
         record_id=finalization_id,
+        start_day=start_day,
         through_day=through_day,
     )
     facts: tuple[JournalFact, ...] = (
@@ -308,6 +313,7 @@ def finalize_interest(
     )
     return FinalizationResult(
         ledger=updated,
+        start_day=start_day,
         through_day=through_day,
         pre_capitalization_commit=pre_capitalization_commit,
         final_commit=latest_commit_sequence(updated),
@@ -671,5 +677,5 @@ def _capitalization_id(account_id: str, day: int) -> str:
     return f"interest-capitalization:{account_id}:day:{day}"
 
 
-def _interest_finalization_id(day: int) -> str:
-    return f"interest-finalization:day:{day}"
+def _interest_finalization_id(start_day: int, through_day: int) -> str:
+    return f"interest-finalization:days:{start_day}-{through_day}"

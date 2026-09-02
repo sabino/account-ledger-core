@@ -62,7 +62,7 @@ class Money:
     minor_units: int
 
     def __post_init__(self) -> None:
-        if isinstance(self.minor_units, bool):
+        if type(self.minor_units) is not int:
             raise DomainInvariantError("minor_units must be an integer")
 
     @classmethod
@@ -384,6 +384,7 @@ class InterestAccrual:
 @dataclass(frozen=True, slots=True)
 class InterestFinalized:
     record_id: RecordId
+    start_day: Day
     through_day: Day
 
 

@@ -212,8 +212,10 @@ def _validate_fact(ledger: Ledger, fact: JournalFact) -> None:
         if fact.amount.minor_units < 0:
             raise JournalInvariantError("interest accrual cannot be negative")
     else:
-        if fact.through_day <= 0:
-            raise JournalInvariantError("interest finalization day must be positive")
+        if fact.start_day <= 0 or fact.through_day < fact.start_day:
+            raise JournalInvariantError(
+                "interest finalization must cover a non-empty positive day range"
+            )
 
 
 def _validate_accepted_event(ledger: Ledger, event: InputEvent) -> None:

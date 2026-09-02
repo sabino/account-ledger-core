@@ -31,6 +31,12 @@ class MoneyTest(unittest.TestCase):
         with self.assertRaises(CurrencyMismatchError):
             _ = Money.parse(AED, "1.00") + Money.parse(BHD, "1.000")
 
+    def test_direct_construction_rejects_non_integer_minor_units(self) -> None:
+        for invalid in (True, 1.5, "100", None):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(DomainInvariantError):
+                    Money(AED, invalid)  # pyright: ignore[reportArgumentType]
+
     def test_round_ratio_uses_ties_to_even(self) -> None:
         self.assertEqual(round_ratio_half_even(5, 2), 2)
         self.assertEqual(round_ratio_half_even(7, 2), 4)
