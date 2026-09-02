@@ -110,3 +110,8 @@ I tried fee functions that returned the wrong currency, zero, or a negative amou
 
 ## 2026-09-02 — Final reconciliation
 
+### 19:48:09 — Act · Make the explanation match the implementation
+
+I read the requirements, ambiguity choices, arithmetic, tests, report, and architecture together. I made each accepted or refused claim explicit and described only approaches I had genuinely considered and then replaced. I also removed statements that were broader than the code could prove.
+
+The result is intentionally bounded. It demonstrates exact money, append-only replay, two-axis historical reconstruction, explicit business policy, deterministic reporting, and honest failure behavior. It does not pretend that an in-memory assessment core is a production banking platform.
