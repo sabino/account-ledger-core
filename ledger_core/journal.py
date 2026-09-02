@@ -184,6 +184,7 @@ def _validate_fact(ledger: Ledger, fact: JournalFact) -> None:
     elif isinstance(fact, Posting):
         account = account_for(ledger, fact.account_id)
         _require_currency(account, fact.amount)
+        _require_positive_day(fact.value_day)
         if fact.amount.minor_units == 0:
             raise JournalInvariantError("posting amount cannot be zero")
         if fact.kind is PostingKind.REVERSAL and fact.reverses_record_id is None:
@@ -193,6 +194,7 @@ def _validate_fact(ledger: Ledger, fact: JournalFact) -> None:
     elif isinstance(fact, (AuthorizationApproved, AuthorizationDeclined)):
         account = account_for(ledger, fact.account_id)
         _require_currency(account, fact.amount)
+        _require_positive_day(fact.value_day)
         if fact.amount.minor_units <= 0:
             raise JournalInvariantError("authorization amount must be positive")
         if isinstance(fact, AuthorizationDeclined):
@@ -201,6 +203,7 @@ def _validate_fact(ledger: Ledger, fact: JournalFact) -> None:
         account = account_for(ledger, fact.account_id)
         _require_currency(account, fact.captured_amount)
         _require_currency(account, fact.released_amount)
+        _require_positive_day(fact.value_day)
         if fact.captured_amount.minor_units <= 0:
             raise JournalInvariantError("captured amount must be positive")
         if fact.released_amount.minor_units < 0:
@@ -209,6 +212,7 @@ def _validate_fact(ledger: Ledger, fact: JournalFact) -> None:
         account = account_for(ledger, fact.account_id)
         _require_currency(account, fact.basis)
         _require_currency(account, fact.amount)
+        _require_positive_day(fact.value_day)
         if fact.amount.minor_units < 0:
             raise JournalInvariantError("interest accrual cannot be negative")
     else:
@@ -237,6 +241,11 @@ def _require_currency(account: Account, amount: Money) -> None:
             f"account {account.account_id} uses {account.currency.code}, "
             f"not {amount.currency.code}"
         )
+
+
+def _require_positive_day(day: int) -> None:
+    if day <= 0:
+        raise JournalInvariantError("fact value day must be positive")
 
 
 def stored_facts(

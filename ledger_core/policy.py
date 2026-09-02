@@ -94,6 +94,10 @@ def decide_authorization(
     """Approve exactly when available balance remains nonnegative."""
 
     _ = policy
+    if active_holds.minor_units < 0:
+        raise DomainInvariantError("active holds cannot be negative")
+    if requested.minor_units <= 0:
+        raise DomainInvariantError("authorization request must be positive")
     available_before_hold = ledger_balance - active_holds
     available_after_hold = available_before_hold - requested
     if available_after_hold.minor_units >= 0:
@@ -118,6 +122,8 @@ def decide_settlement(
     """Resolve one final capture; multi-capture and over-capture are unsupported."""
 
     _ = policy
+    if requested.minor_units <= 0:
+        raise DomainInvariantError("settlement request must be positive")
     if authorization is None:
         return RejectSettlement(
             RejectionCode.AUTHORIZATION_NOT_FOUND,
@@ -167,6 +173,8 @@ def split_installments(
     policy: AssessmentPolicy, *, total: Money, count: int
 ) -> tuple[Money, ...]:
     _ = policy
+    if total.minor_units <= 0:
+        raise DomainInvariantError("installment total must be positive")
     return allocate_evenly(total, count)
 
 
@@ -195,6 +203,7 @@ def capitalization_total(
     _ = policy
     total = Money.zero(currency)
     for accrual in rounded_daily_accruals:
+        if accrual.minor_units < 0:
+            raise DomainInvariantError("daily interest accrual cannot be negative")
         total = total + accrual
     return total
-

@@ -5,6 +5,7 @@ import unittest
 
 from ledger_core.journal import (
     DuplicateRecordError,
+    JournalInvariantError,
     append_batch,
     authorization_view,
     closing_balance,
@@ -107,6 +108,28 @@ class JournalTest(unittest.TestCase):
             append_batch(
                 original,
                 (valid, invalid),
+                recorded_day=1,
+                policy_version="test-v1",
+            )
+
+        self.assertEqual(original.records, ())
+
+    def test_append_rejects_nonpositive_fact_value_day(self) -> None:
+        original = new_ledger((account(),))
+        invalid = Posting(
+            "posting:invalid-day",
+            "A",
+            Money.parse(AED, "1.00"),
+            0,
+            PostingKind.CREDIT,
+            "E1",
+            "E1",
+        )
+
+        with self.assertRaises(JournalInvariantError):
+            append_batch(
+                original,
+                (invalid,),
                 recorded_day=1,
                 policy_version="test-v1",
             )

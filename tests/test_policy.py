@@ -8,6 +8,7 @@ from ledger_core.model import (
     Account,
     AuthorizationStatus,
     AuthorizationView,
+    DomainInvariantError,
     Money,
     RejectionCode,
 )
@@ -57,6 +58,22 @@ class AssessmentPolicyTest(unittest.TestCase):
             decision.available_after_hold, Money.parse(AED, "-320.00")
         )
 
+    def test_authorization_rejects_negative_holds_and_nonpositive_requests(self) -> None:
+        with self.assertRaises(DomainInvariantError):
+            decide_authorization(
+                self.policy,
+                ledger_balance=Money.parse(AED, "10.00"),
+                active_holds=Money.parse(AED, "-1.00"),
+                requested=Money.parse(AED, "1.00"),
+            )
+        with self.assertRaises(DomainInvariantError):
+            decide_authorization(
+                self.policy,
+                ledger_balance=Money.parse(AED, "10.00"),
+                active_holds=Money.zero(AED),
+                requested=Money.zero(AED),
+            )
+
     def test_settlement_rejects_missing_authorization(self) -> None:
         decision = decide_settlement(
             self.policy,
@@ -67,6 +84,14 @@ class AssessmentPolicyTest(unittest.TestCase):
         self.assertIsInstance(decision, RejectSettlement)
         assert isinstance(decision, RejectSettlement)
         self.assertIs(decision.code, RejectionCode.AUTHORIZATION_NOT_FOUND)
+
+    def test_settlement_requires_a_positive_request(self) -> None:
+        with self.assertRaises(DomainInvariantError):
+            decide_settlement(
+                self.policy,
+                authorization=None,
+                requested=Money.parse(AED, "-1.00"),
+            )
 
     def test_final_capture_releases_unused_hold(self) -> None:
         zero = Money.zero(AED)
