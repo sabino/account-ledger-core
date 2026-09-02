@@ -32,7 +32,7 @@ from ledger_core.model import (
     RejectionCode,
     ReversalRequested,
 )
-from ledger_core.policy import AssessmentPolicy
+from ledger_core.policy import AssessmentPolicy, UnsupportedFeeCurrencyError
 from ledger_core.scenario import assessment_events, empty_assessment_ledger
 
 
@@ -375,6 +375,32 @@ class ReplayEngineTest(unittest.TestCase):
             Money.parse(AED, "-151.00"),
         )
 
+    def test_finalization_refuses_an_undefined_fee_currency_atomically(self) -> None:
+        debit = Debit(
+            "bhd-negative-before-finalization",
+            1,
+            "ACC-002",
+            Money.parse(BHD, "1.000"),
+            1,
+        )
+        processed = process_event(
+            empty_assessment_ledger(), debit, self.policy
+        )
+        records_before = processed.ledger.records
+
+        with self.assertRaisesRegex(
+            UnsupportedFeeCurrencyError,
+            "no overdraft fee rule exists for BHD",
+        ):
+            finalize_interest(
+                processed.ledger,
+                self.policy,
+                start_day=1,
+                through_day=1,
+            )
+
+        self.assertEqual(processed.ledger.records, records_before)
+
     def test_temporary_same_day_negative_does_not_assess_a_fee(self) -> None:
         debit = Debit(
             "temporary-debit",
@@ -437,6 +463,47 @@ class ReplayEngineTest(unittest.TestCase):
         self.assertIsNotNone(auth)
         assert auth is not None
         self.assertIs(auth.status, AuthorizationStatus.DECLINED)
+
+    def test_unsupported_prior_day_fee_is_a_stored_rejection_not_an_exception(
+        self,
+    ) -> None:
+        unsupported_negative = Debit(
+            "bhd-negative-day-1",
+            1,
+            "ACC-002",
+            Money.parse(BHD, "1.000"),
+            1,
+        )
+        first = process_event(
+            empty_assessment_ledger(), unsupported_negative, self.policy
+        )
+        next_day_unrelated = Credit(
+            "aed-day-2",
+            2,
+            "ACC-001",
+            Money.parse(AED, "1.00"),
+            2,
+        )
+
+        second = process_event(first.ledger, next_day_unrelated, self.policy)
+
+        self.assertIsInstance(first.receipt, EventAccepted)
+        self.assertIsInstance(second.receipt, EventRejected)
+        assert isinstance(second.receipt, EventRejected)
+        self.assertIs(
+            second.receipt.code,
+            RejectionCode.UNSUPPORTED_FEE_CURRENCY,
+        )
+        self.assertFalse(
+            any(
+                posting.direct_event_id == next_day_unrelated.event_id
+                for posting in postings(second.ledger)
+            )
+        )
+        self.assertEqual(
+            event_receipt(second.ledger, next_day_unrelated.event_id),
+            second.receipt,
+        )
 
     def test_reversal_is_narrowly_a_direct_debit_compensation(self) -> None:
         replay = replay_events(

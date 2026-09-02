@@ -104,3 +104,9 @@ At the same checkpoint I strengthened the late-correction limitation. A plausibl
 
 A day can contain several postings before its final closing balance exists. I corrected the model so generated closing fees do not make the first negative posting look like a finished day. This was a small distinction in code but an important one in the accounting story.
 
+### 18:43:02 — Act · Fail safely when fee policy is unsupported
+
+I tried fee functions that returned the wrong currency, zero, or a negative amount. Those results should not leak partial facts or crash halfway through replay. The core now contains them as a structured rejection during event processing or an atomic typed failure during finalization. I preferred a narrow, explicit failure over pretending arbitrary policy code was valid.
+
+## 2026-09-02 — Final reconciliation
+

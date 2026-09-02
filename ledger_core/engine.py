@@ -158,14 +158,27 @@ def process_event(
     # known so far.  This keeps ordinary same-day postings from being charged
     # before their day has actually closed; stable fee IDs make the sweep safe
     # to repeat.  A backdated posting is reassessed separately below.
-    ledger = _reconcile_overdraft_fees_through(
-        ledger,
-        policy,
-        start_day=1,
-        through_day=event.booked_day - 1,
-        recorded_day=event.booked_day,
-        caused_by=f"day-close-before:{event.event_id}",
-    )
+    try:
+        ledger = _reconcile_overdraft_fees_through(
+            ledger,
+            policy,
+            start_day=1,
+            through_day=event.booked_day - 1,
+            recorded_day=event.booked_day,
+            caused_by=f"day-close-before:{event.event_id}",
+        )
+    except UnsupportedFeeCurrencyError as error:
+        # The command cannot cross the day boundary while a prior close needs
+        # a fee for which this bounded policy has no currency rule.  Preserve
+        # the attempted input as a deterministic rejection; never let an
+        # unrelated account's unresolved close escape as a runtime exception.
+        return _append_rejection(
+            ledger,
+            event,
+            policy,
+            RejectionCode.UNSUPPORTED_FEE_CURRENCY,
+            str(error),
+        )
 
     facts = _stage_event_facts(ledger, account, event, policy)
     receipt = facts[0]
@@ -228,7 +241,13 @@ def finalize_interest(
     start_day: int,
     through_day: int,
 ) -> FinalizationResult:
-    """Accrue rounded daily interest and append each account's exact sum."""
+    """Accrue rounded daily interest and append each account's exact sum.
+
+    Raises ``UnsupportedFeeCurrencyError`` atomically, before any append, when
+    a negative close requires a fee rule this bounded policy does not define.
+    There is no input event to reject in that administrative operation, so the
+    typed exception is the explicit caller-facing failure contract.
+    """
 
     if start_day <= 0 or through_day < start_day:
         raise ValueError("interest window must be a non-empty positive day range")
