@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 from ledger_core.engine import finalize_interest, process_event, replay_events
+from ledger_core.journal import closing_balance
 from ledger_core.model import AED, Credit, EventAccepted, Money
 from ledger_core.policy import AssessmentPolicy
 from ledger_core.scenario import assessment_events, empty_assessment_ledger
@@ -45,8 +46,17 @@ class LateInterestCorrectionLimitationTest(unittest.TestCase):
             "known limitation: post-finalization backdates require a controlled "
             "interest-correction workflow",
         )
+        self.assertEqual(
+            closing_balance(
+                result.ledger,
+                "ACC-001",
+                effective_through=6,
+            ),
+            Money.parse(AED, "491.09"),
+            "accepting the principal is insufficient: the append-only result "
+            "must also include the AED 0.16 interest correction",
+        )
 
 
 if __name__ == "__main__":
     unittest.main()
-

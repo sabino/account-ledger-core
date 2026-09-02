@@ -94,3 +94,9 @@ An arbitrary-size input exposed a flaw in my first parser. Multiplying a `Decima
 
 I expanded the suite beyond the happy path: invalid batches, duplicate identities, policy failures, idempotency, knowledge cutoffs, and the complete six-day report. I wanted a broken invariant to fail near its cause. The full projection also acted as a reconciliation table, making it difficult for one correct headline number to hide a wrong intermediate day.
 
+### 18:35:01 — Act · Treat fees as a closing process
+
+My first fee pass was too closely tied to the arrival of a monetary event. That could miss a quiet negative day and could treat a temporary same-day balance as though the day were finished. I changed the flow to close earlier days when booked time advances, immediately rescan accepted backdated effects, and sweep the requested window during finalization.
+
+At the same checkpoint I strengthened the late-correction limitation. A plausible correction has to reconcile both the newly changed principal and interest that was already capitalized; testing only the principal would understate the real problem.
+
