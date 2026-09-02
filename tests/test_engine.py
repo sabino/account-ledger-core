@@ -22,6 +22,7 @@ from ledger_core.model import (
     AED,
     BHD,
     AuthorizationStatus,
+    AuthorizationRequested,
     Credit,
     Debit,
     EventAccepted,
@@ -373,6 +374,69 @@ class ReplayEngineTest(unittest.TestCase):
             ),
             Money.parse(AED, "-151.00"),
         )
+
+    def test_temporary_same_day_negative_does_not_assess_a_fee(self) -> None:
+        debit = Debit(
+            "temporary-debit",
+            1,
+            "ACC-001",
+            Money.parse(AED, "1.00"),
+            1,
+        )
+        credit = Credit(
+            "same-day-credit",
+            1,
+            "ACC-001",
+            Money.parse(AED, "100.00"),
+            1,
+        )
+        replay = replay_events(
+            empty_assessment_ledger(),
+            (debit, credit),
+            self.policy,
+        )
+
+        finalization = finalize_interest(
+            replay.ledger,
+            self.policy,
+            start_day=1,
+            through_day=1,
+        )
+
+        self.assertEqual(fee_postings(finalization.ledger), ())
+
+    def test_later_booked_event_closes_and_fees_the_prior_day(self) -> None:
+        debit = Debit(
+            "negative-day-1",
+            1,
+            "ACC-001",
+            Money.parse(AED, "1.00"),
+            1,
+        )
+        first = process_event(empty_assessment_ledger(), debit, self.policy)
+        authorization = AuthorizationRequested(
+            "advance-to-day-2",
+            2,
+            "ACC-001",
+            "Auth-next-day",
+            Money.parse(AED, "1.00"),
+            2,
+        )
+
+        second = process_event(first.ledger, authorization, self.policy)
+        auth = authorization_view(
+            second.ledger,
+            "Auth-next-day",
+            effective_through=2,
+        )
+
+        self.assertEqual(
+            tuple(fee.value_day for fee in fee_postings(second.ledger)),
+            (1,),
+        )
+        self.assertIsNotNone(auth)
+        assert auth is not None
+        self.assertIs(auth.status, AuthorizationStatus.DECLINED)
 
     def test_reversal_is_narrowly_a_direct_debit_compensation(self) -> None:
         replay = replay_events(

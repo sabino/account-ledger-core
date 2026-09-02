@@ -100,3 +100,7 @@ My first fee pass was too closely tied to the arrival of a monetary event. That 
 
 At the same checkpoint I strengthened the late-correction limitation. A plausible correction has to reconcile both the newly changed principal and interest that was already capitalized; testing only the principal would understate the real problem.
 
+### 18:36:20 — Act · Separate activity during a day from the final close
+
+A day can contain several postings before its final closing balance exists. I corrected the model so generated closing fees do not make the first negative posting look like a finished day. This was a small distinction in code but an important one in the accounting story.
+

@@ -154,6 +154,19 @@ def process_event(
             ),
         )
 
+    # Crossing into a later booked day closes every earlier day under the facts
+    # known so far.  This keeps ordinary same-day postings from being charged
+    # before their day has actually closed; stable fee IDs make the sweep safe
+    # to repeat.  A backdated posting is reassessed separately below.
+    ledger = _reconcile_overdraft_fees_through(
+        ledger,
+        policy,
+        start_day=1,
+        through_day=event.booked_day - 1,
+        recorded_day=event.booked_day,
+        caused_by=f"day-close-before:{event.event_id}",
+    )
+
     facts = _stage_event_facts(ledger, account, event, policy)
     receipt = facts[0]
     if isinstance(receipt, EventRejected):
@@ -547,6 +560,8 @@ def _new_overdraft_fees(
     policy: AssessmentPolicy,
 ) -> tuple[Posting, ...]:
     affected_from = min(posting.value_day for posting in direct_postings)
+    if affected_from >= event.booked_day:
+        return ()
     horizon = latest_recorded_day(candidate)
     return _missing_overdraft_fees(
         candidate,
