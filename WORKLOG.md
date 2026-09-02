@@ -72,3 +72,7 @@ I repeated the experiment with stricter Numscript templates, schemas, and reject
 
 I started with immutable money values and typed events because every later calculation depended on them. Amounts became integer minor units with an explicit currency scale and round-half-even behavior. I deliberately rejected exponent notation, excess precision, and cross-currency arithmetic rather than guessing what the caller meant.
 
+### 18:14:07 — Do · Make the journal append-only by construction
+
+I added a functional journal that returns new state instead of mutating old state. A batch either validates completely or contributes no facts, posting identities are unique, and movements must balance by currency. This gave the replay engine a small trusted core and made earlier states available for knowledge-time questions.
+
