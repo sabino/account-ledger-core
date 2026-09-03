@@ -6,7 +6,7 @@ All timestamps use America/Sao_Paulo (`UTC-03:00`).
 
 I used a lightweight Plan–Do–Check–Act loop. I planned by turning uncertain wording into explicit questions, did the smallest useful piece, checked it against arithmetic and tests, and acted on what the checks exposed.
 
-The times below are real checkpoints, not claims that I worked continuously between them. When several related changes landed at the same recorded second, I describe them as one checkpoint instead of inventing a false minute-by-minute sequence. AI tools helped with research, independent review, implementation, tests, and editing. I made the final policy choices and remain responsible for the result.
+The times below are real checkpoints, not claims that I worked continuously between them. When several related changes landed at the same recorded second, I describe them as one checkpoint instead of inventing a false minute-by-minute sequence. I made the final policy choices and remain responsible for the result.
 
 ## 2026-09-01 — Preparation
 
@@ -40,7 +40,7 @@ I laid out the required documents, an architecture outline, an ambiguity log, an
 
 ### 13:55:10 — Check · Challenge my reading before implementation
 
-I gave the untouched specification to three independent AI reviewers with different focuses: arithmetic and time, adversarial specification reading, and implementation choices. I compared their anonymized answers with mine rather than asking them to confirm my preferred result.
+I used three separate AI review passes on the untouched specification, with different focuses: arithmetic and time, adversarial specification reading, and implementation choices. I compared their anonymized answers with mine rather than asking them to confirm my preferred result.
 
 The reviews converged on accepting Claim-1, Claim-3, Claim-4, and Claim-5 and refusing Claim-2, Claim-6, Claim-7, and Claim-8. Under the policy I was considering, they also reproduced three AED 25.00 fees, AED 0.93 interest, and BHD 0.008 interest. That agreement gave me confidence in the arithmetic, while the disagreements helped me identify which conclusions still depended on disclosed policy.
 
@@ -54,7 +54,7 @@ While writing out the mental model, I noticed that short acceptance labels could
 
 ### 14:45:56 — Check · Work the scenario by hand
 
-Before trusting code, I worked through authorizations, accepted and rejected events, postings, fees, daily closes, and interest seperately. I used that hand-worked result as the oracle for implementation. If the program disagreed, I wanted to investigate the transition where the disagreement began instead of adjusting an expected final balance until a test turned green.
+Before trusting code, I worked through authorizations, accepted and rejected events, postings, fees, daily closes, and interest separately. I used that hand-worked result as the oracle for implementation. If the program disagreed, I wanted to investigate the transition where the disagreement began instead of adjusting an expected final balance until a test turned green.
 
 ## 2026-09-02 — Reference experiments
 
@@ -74,7 +74,7 @@ I started with immutable money values and typed events because every later calcu
 
 ### 18:14:07 — Do · Make the journal append-only by construction
 
-I added a functional journal that returns new state instead of mutating old state. A batch either validates completely or contributes no facts, posting identities are unique, and movements must balance by currency. This gave the replay engine a small trusted core and made earlier states available for knowledge-time questions.
+I added a functional journal that returns new state instead of mutating old state. A batch either validates completely or contributes no facts, posting identities are unique, and every posting amount must match its account's currency. This gave the replay engine a small trusted core and made earlier states available for knowledge-time questions.
 
 ### 18:21:56 — Do · Keep policy decisions outside atomic replay
 
@@ -115,3 +115,51 @@ I tried fee functions that returned the wrong currency, zero, or a negative amou
 I read the requirements, ambiguity choices, arithmetic, tests, report, and architecture together. I made each accepted or refused claim explicit and described only approaches I had genuinely considered and then replaced. I also removed statements that were broader than the code could prove.
 
 The result is intentionally bounded. It demonstrates exact money, append-only replay, two-axis historical reconstruction, explicit business policy, deterministic reporting, and honest failure behavior. It does not pretend that an in-memory assessment core is a production banking platform.
+
+## 2026-09-02 — Architecture document
+
+### 22:02:15 — Plan · Resume after a long pause
+
+I paused for more than two hours after the Part 1 reconciliation. I spent that time with my children, had dinner, and returned rested before starting the architecture document.
+
+I reread the four required sections and chose to keep the argument anchored to the implementation: identify the first measured or structural limit, make the smallest credible improvement, state what it does not solve, and describe distribution only as a later step with explicit ordering and atomicity costs. I also began a fresh review of the UAE value-date surface, authorization terminal states, and every production risk deferred by the Part 1 cuts.
+
+### 22:12:47 — Check · Reconcile the architecture argument
+
+I compared the implementation with AI reviews of its storage complexity, authorization state machine, UAE value-date obligations, and scope cuts. The reviews changed the emphasis in useful ways. I separated event-volume growth from concurrent-writer correctness, described 10,000x only as the quadratic component of a 100x input increase, and made clear that a declined request is the only non-settlement terminal outcome represented while an approved hold has no non-settlement ending in this model.
+
+I then drafted the architecture document in first person. I chose one closed-period correction gate rather than a loose compliance checklist, connected it to the known failing test, and kept distribution on a staged path: remove retained prefixes, establish a durable ordered append boundary and indexes, measure it, then partition by account only when an explicit objective requires it. I grouped the deliberate cuts by the production risk they defer so the list remains complete enough to challenge without turning into a catalogue of infrastructure.
+
+### 22:28:30 — Check · Challenge, render, and verify the document
+
+I put the completed draft through three AI review passes against the code and decision logs. They caught distinctions I wanted to be able to defend precisely: replay retention is quadratic in event count only under bounded fact fan-out; temporary full-log allocations are not retained state; the current close and finalization loops must become account-local before `account_id` is an honest partition boundary; and decline is a terminal request outcome, not a transition out of an active hold. I corrected each point, narrowed the UAE claims to their applicable consumer, error, and control contexts, and reduced the source to 1,794 words without dropping a production-risk category.
+
+I rendered the source as a three-page A4 PDF and inspected every page at 180 DPI. I verified its page count, 15,315-byte size, text, page bounds, and four source-link annotations. The 57-test correctness suite, complete replay, and strict type check remained green. The separate known-limitation test still failed for the intended reason: the finalized-period correction is rejected instead of posting the principal and reconciled interest delta. I left the Markdown, renderer, PDF, and worklog changes uncommitted for review.
+
+## 2026-09-03 — Final hardening and explanation
+
+### 01:11:18 — Plan · Reconcile the whole submission before changing it
+
+I reread the captured requirements, implementation, tests, decision records, architecture draft, renderer, and existing PDF before editing. I preserved the prior uncommitted work and used the current green suite and rendered document as a baseline. I confirmed that the required currency model is two independent account currencies—AED at two decimal places and BHD at three—not foreign exchange between them.
+
+The review left me with three bounded goals: remove incorrect author identity from the PDF path, close the malformed-posting gap at the journal boundary without turning the exercise into a general ledger, and make the implementation simple enough to explain before discussing production evolution.
+
+### 01:29:59 — Do · Tighten the existing boundary and simplify the architecture story
+
+I kept the customer subledger model and strengthened the place where complete fact batches enter its journal. Event receipts now lead their batch and agree with booked time; accepted monetary events, authorization outcomes, settlements, and reversals must carry their matching facts and causes together. Installment children must equal the deterministic allocation, and reversal targets are exact and single-use. At this checkpoint I also made the journal recalculate policy-derived fees and interest before append; a later AI adversarial review showed that this duplicated too much of the engine, so I removed that part while retaining the structural boundary. I also rejected invalid currency-precision metadata instead of allowing it to fail later during parsing.
+
+I added focused regression tests for each bypass and kept the original ledger unchanged whenever validation fails. The six-day behavior and existing policy choices did not change. In parallel, I rewrote the architecture source to begin with the five-step in-memory flow, state the customer debit/credit boundary plainly, separate required AED/BHD support from FX, and make scale assumptions explicit before discussing persistence, read models, partitioning, or coordination. I corrected the authored-document identity to Felipe Sabino in the renderer and reserved final artifact regeneration for the completed source.
+
+### 02:18:53 — Act · Keep one owner for policy decisions
+
+An AI adversarial lifecycle review found that a second settlement could supply a value day earlier than the first settlement and see the authorization as historically active. That allowed a second capture and then made later authorization projection fail. I separated two checks: terminal state now follows everything already known, while the effective-date view still proves that an otherwise active authorization existed on the requested value day. I added both supported-path and raw-batch regressions for the case.
+
+The same AI review showed that my first hardening pass had made the journal recalculate too much fee, interest, and authorization policy already owned by the engine. That duplication made the core larger and had helped the two settlement paths diverge. I removed the duplicated policy evaluator and transient close context from `append_batch`. I retained atomic uniqueness, types, currencies, nonzero amounts, debit/credit direction, receipt shape, direct-event causality, deterministic installments, exact single-use reversals, and authorization-history consistency. Policy functions and the engine again own business outcomes, with scenario and boundary tests checking their results.
+
+### 02:26:23 — Check · Verify the frozen local deliverables
+
+A final AI out-of-order review found one more fee-close edge: an event whose booked day regressed below the previously recorded high-water mark could skip the historical rescan when its value day equaled its own booked day. I corrected the condition and added a regression that moves from Day 6 back to Day 5, assesses the resulting Day 5 and Day 6 fees, and reconciles the final close. AI rechecks then found no remaining material defect in the supported event and finalization paths.
+
+I ran the complete 80-test correctness suite successfully, received zero strict type errors or warnings, and replayed E1–E10 with the expected six-day report and exit status 0. I ran the known-limitation command separately: exactly one annotated test failed with exit status 1 for the intentionally unsupported finalized-period correction workflow.
+
+I regenerated the architecture artifact from the final source. It is exactly four A4 pages and 17,072 bytes, has `Felipe Sabino` as its author metadata and footer identity, contains four distinct official source links, and has no encryption or JavaScript. I rendered all four pages at 180 DPI and inspected them for clipping, overlap, legibility, and stale text. Source, history, filename, artifact-text, metadata, and secret-pattern checks found no stale invented identity or unintended personal material. I removed the temporary page images after inspection and left every project change uncommitted for review.

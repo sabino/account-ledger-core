@@ -29,6 +29,10 @@ class Ratio:
     denominator: int
 
     def __post_init__(self) -> None:
+        if type(self.numerator) is not int:
+            raise DomainInvariantError("ratio numerator must be an integer")
+        if type(self.denominator) is not int:
+            raise DomainInvariantError("ratio denominator must be an integer")
         if self.numerator < 0:
             raise DomainInvariantError("ratio numerator cannot be negative")
         if self.denominator <= 0:

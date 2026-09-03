@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 import re
 from typing import Self
+from urllib.parse import quote
 
 
 type AccountId = str
@@ -18,6 +19,12 @@ type AuthorizationId = str
 type EventId = str
 type RecordId = str
 type Day = int
+
+
+def encode_record_component(value: str) -> str:
+    """Encode one external identifier before joining record-ID dimensions."""
+
+    return quote(value, safe="")
 
 
 class DomainInvariantError(ValueError):
@@ -40,8 +47,10 @@ class Currency:
     decimal_places: int
 
     def __post_init__(self) -> None:
-        if not self.code or self.code != self.code.upper():
+        if type(self.code) is not str or not self.code or self.code != self.code.upper():
             raise DomainInvariantError("currency code must be non-empty uppercase text")
+        if type(self.decimal_places) is not int:
+            raise DomainInvariantError("currency decimal places must be an integer")
         if self.decimal_places < 0:
             raise DomainInvariantError("currency decimal places cannot be negative")
 
@@ -62,6 +71,10 @@ class Money:
     minor_units: int
 
     def __post_init__(self) -> None:
+        if not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]
+            self.currency, Currency
+        ):
+            raise DomainInvariantError("money currency must be a Currency")
         if type(self.minor_units) is not int:
             raise DomainInvariantError("minor_units must be an integer")
 
@@ -143,7 +156,7 @@ def round_ratio_half_even(numerator: int, denominator: int) -> int:
 def allocate_evenly(amount: Money, parts: int) -> tuple[Money, ...]:
     """Split a non-negative amount exactly, assigning spare units left-to-right."""
 
-    if parts <= 0:
+    if type(parts) is not int or parts <= 0:
         raise DomainInvariantError("installment count must be positive")
     if amount.minor_units < 0:
         raise DomainInvariantError("cannot allocate a negative amount")
@@ -156,15 +169,29 @@ def allocate_evenly(amount: Money, parts: int) -> tuple[Money, ...]:
 
 
 def _validate_event_identity(event_id: EventId, booked_day: Day, value_day: Day) -> None:
-    if not event_id:
+    if type(event_id) is not str or not event_id:
         raise DomainInvariantError("event_id cannot be empty")
-    if booked_day <= 0 or value_day <= 0:
+    if (
+        type(booked_day) is not int
+        or type(value_day) is not int
+        or booked_day <= 0
+        or value_day <= 0
+    ):
         raise DomainInvariantError("booked_day and value_day must be positive")
 
 
 def _validate_positive_amount(amount: Money) -> None:
+    if not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]
+        amount, Money
+    ):
+        raise DomainInvariantError("event amount must be Money")
     if amount.minor_units <= 0:
         raise DomainInvariantError("event amount must be positive")
+
+
+def _validate_account_id(account_id: AccountId) -> None:
+    if type(account_id) is not str or not account_id:
+        raise DomainInvariantError("account_id cannot be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,9 +205,14 @@ class Credit:
 
     def __post_init__(self) -> None:
         _validate_event_identity(self.event_id, self.booked_day, self.value_day)
+        _validate_account_id(self.account_id)
         _validate_positive_amount(self.amount)
-        if self.installments <= 0:
+        if type(self.installments) is not int or self.installments <= 0:
             raise DomainInvariantError("installments must be positive")
+        if self.installments > self.amount.minor_units:
+            raise DomainInvariantError(
+                "installments cannot exceed the available minor units"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,6 +225,7 @@ class Debit:
 
     def __post_init__(self) -> None:
         _validate_event_identity(self.event_id, self.booked_day, self.value_day)
+        _validate_account_id(self.account_id)
         _validate_positive_amount(self.amount)
 
 
@@ -207,8 +240,9 @@ class AuthorizationRequested:
 
     def __post_init__(self) -> None:
         _validate_event_identity(self.event_id, self.booked_day, self.value_day)
+        _validate_account_id(self.account_id)
         _validate_positive_amount(self.amount)
-        if not self.authorization_id:
+        if type(self.authorization_id) is not str or not self.authorization_id:
             raise DomainInvariantError("authorization_id cannot be empty")
 
 
@@ -223,8 +257,9 @@ class SettlementRequested:
 
     def __post_init__(self) -> None:
         _validate_event_identity(self.event_id, self.booked_day, self.value_day)
+        _validate_account_id(self.account_id)
         _validate_positive_amount(self.amount)
-        if not self.authorization_id:
+        if type(self.authorization_id) is not str or not self.authorization_id:
             raise DomainInvariantError("authorization_id cannot be empty")
 
 
@@ -238,7 +273,8 @@ class ReversalRequested:
 
     def __post_init__(self) -> None:
         _validate_event_identity(self.event_id, self.booked_day, self.value_day)
-        if not self.target_event_id:
+        _validate_account_id(self.account_id)
+        if type(self.target_event_id) is not str or not self.target_event_id:
             raise DomainInvariantError("target_event_id cannot be empty")
 
 
@@ -258,8 +294,15 @@ class Account:
     opening_balance: Money
 
     def __post_init__(self) -> None:
-        if not self.account_id:
-            raise DomainInvariantError("account_id cannot be empty")
+        _validate_account_id(self.account_id)
+        if not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]
+            self.currency, Currency
+        ):
+            raise DomainInvariantError("account currency must be a Currency")
+        if not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]
+            self.opening_balance, Money
+        ):
+            raise DomainInvariantError("opening balance must be Money")
         if self.opening_balance.currency != self.currency:
             raise CurrencyMismatchError("opening balance must use the account currency")
 
@@ -272,6 +315,13 @@ class PostingKind(StrEnum):
     REVERSAL = "reversal"
     OVERDRAFT_FEE = "overdraft_fee"
     INTEREST_CAPITALIZATION = "interest_capitalization"
+
+
+class CustomerPostingDirection(StrEnum):
+    """Customer-account statement direction, not a complete bank GL leg."""
+
+    DEBIT = "debit"
+    CREDIT = "credit"
 
 
 class AuthorizationStatus(StrEnum):
@@ -323,6 +373,22 @@ class Posting:
     direct_event_id: EventId | None
     caused_by: RecordId | EventId
     reverses_record_id: RecordId | None = None
+
+    @property
+    def direction(self) -> CustomerPostingDirection:
+        """Derive the customer-facing direction from the signed balance delta."""
+
+        if self.amount.minor_units > 0:
+            return CustomerPostingDirection.CREDIT
+        if self.amount.minor_units < 0:
+            return CustomerPostingDirection.DEBIT
+        raise DomainInvariantError("a zero posting has no debit or credit direction")
+
+    @property
+    def magnitude(self) -> Money:
+        """Return the unsigned statement amount without creating a second truth."""
+
+        return abs(self.amount)
 
 
 @dataclass(frozen=True, slots=True)

@@ -31,6 +31,7 @@ from ledger_core.model import (
     PostingKind,
     RejectionCode,
     ReversalRequested,
+    SettlementRequested,
 )
 from ledger_core.policy import AssessmentPolicy, UnsupportedFeeCurrencyError
 from ledger_core.scenario import assessment_events, empty_assessment_ledger
@@ -54,6 +55,45 @@ class ReplayEngineTest(unittest.TestCase):
         self.assertEqual(result.steps[8].commit_sequence, 9)
         self.assertEqual(result.steps[9].commit_sequence, 10)
 
+    def test_regressed_booked_day_rescans_through_the_known_horizon(self) -> None:
+        later_day = process_event(
+            empty_assessment_ledger(),
+            Credit(
+                "day-six-credit",
+                6,
+                "ACC-001",
+                Money.parse(AED, "1.00"),
+                6,
+            ),
+            self.policy,
+        )
+
+        earlier_day = process_event(
+            later_day.ledger,
+            Debit(
+                "late-day-five-debit",
+                5,
+                "ACC-001",
+                Money.parse(AED, "2.00"),
+                5,
+            ),
+            self.policy,
+        )
+
+        self.assertIsInstance(earlier_day.receipt, EventAccepted)
+        self.assertEqual(
+            tuple(fee.value_day for fee in fee_postings(earlier_day.ledger)),
+            (5, 6),
+        )
+        self.assertEqual(
+            closing_balance(
+                earlier_day.ledger,
+                "ACC-001",
+                effective_through=6,
+            ),
+            Money.parse(AED, "-51.00"),
+        )
+
     def test_missing_authorization_is_a_rejected_event_without_money_moving(self) -> None:
         result = replay_events(
             empty_assessment_ledger(), assessment_events()[:6], self.policy
@@ -72,6 +112,76 @@ class ReplayEngineTest(unittest.TestCase):
                 "Auth-Z",
                 effective_through=6,
             )
+        )
+
+    def test_backdated_second_settlement_cannot_reopen_a_settled_hold(self) -> None:
+        funded = process_event(
+            empty_assessment_ledger(),
+            Credit("fund", 1, "ACC-001", Money.parse(AED, "500.00"), 1),
+            self.policy,
+        )
+        authorized = process_event(
+            funded.ledger,
+            AuthorizationRequested(
+                "authorize",
+                1,
+                "ACC-001",
+                "Auth-single-use",
+                Money.parse(AED, "80.00"),
+                1,
+            ),
+            self.policy,
+        )
+        settled = process_event(
+            authorized.ledger,
+            SettlementRequested(
+                "settle-first",
+                3,
+                "ACC-001",
+                "Auth-single-use",
+                Money.parse(AED, "80.00"),
+                3,
+            ),
+            self.policy,
+        )
+
+        repeated = process_event(
+            settled.ledger,
+            SettlementRequested(
+                "settle-backdated",
+                4,
+                "ACC-001",
+                "Auth-single-use",
+                Money.parse(AED, "80.00"),
+                2,
+            ),
+            self.policy,
+        )
+
+        self.assertIsInstance(repeated.receipt, EventRejected)
+        assert isinstance(repeated.receipt, EventRejected)
+        self.assertIs(repeated.receipt.code, RejectionCode.AUTHORIZATION_NOT_ACTIVE)
+        self.assertFalse(
+            any(
+                posting.direct_event_id == "settle-backdated"
+                for posting in postings(repeated.ledger)
+            )
+        )
+        authorization = authorization_view(
+            repeated.ledger,
+            "Auth-single-use",
+            effective_through=3,
+        )
+        self.assertIsNotNone(authorization)
+        assert authorization is not None
+        self.assertIs(authorization.status, AuthorizationStatus.SETTLED)
+        self.assertEqual(
+            closing_balance(
+                repeated.ledger,
+                "ACC-001",
+                effective_through=3,
+            ),
+            Money.parse(AED, "420.00"),
         )
 
     def test_auth_b_is_a_stored_decline_not_a_processing_error(self) -> None:
@@ -119,6 +229,53 @@ class ReplayEngineTest(unittest.TestCase):
             process_event(first.ledger, conflicting, self.policy)
 
         self.assertEqual(latest_commit_sequence(first.ledger), 1)
+
+    def test_delimiter_bearing_ids_generate_distinct_record_identities(self) -> None:
+        funded = process_event(
+            empty_assessment_ledger(),
+            Credit(
+                "seed",
+                1,
+                "ACC-001",
+                Money.parse(AED, "10.00"),
+                1,
+            ),
+            self.policy,
+        )
+        first_event = AuthorizationRequested(
+            "y:approved:z",
+            1,
+            "ACC-001",
+            "x",
+            Money.parse(AED, "1.00"),
+            1,
+        )
+        second_event = AuthorizationRequested(
+            "z",
+            1,
+            "ACC-001",
+            "x:approved:y",
+            Money.parse(AED, "1.00"),
+            1,
+        )
+
+        first = process_event(funded.ledger, first_event, self.policy)
+        second = process_event(first.ledger, second_event, self.policy)
+
+        self.assertIsInstance(first.receipt, EventAccepted)
+        self.assertIsInstance(second.receipt, EventAccepted)
+        self.assertIsNotNone(
+            authorization_view(second.ledger, "x", effective_through=1)
+        )
+        self.assertIsNotNone(
+            authorization_view(
+                second.ledger,
+                "x:approved:y",
+                effective_through=1,
+            )
+        )
+        record_ids = tuple(record.fact.record_id for record in second.ledger.records)
+        self.assertEqual(len(record_ids), len(set(record_ids)))
 
     def test_currency_mismatch_is_recorded_without_a_posting(self) -> None:
         event = Credit(

@@ -31,7 +31,7 @@ Immediately before E7, ACC-001's Day 5 close is AED 465.00. E9 appends an AED 62
 AED 465.00 - (3 × AED 25.00) = AED 390.00
 ```
 
-I make E9 identify E7's direct debit only. No fee-refund event or cascade policy is supplied, and I do not reconsider Auth-B's earlier decline. Append-only accounting would permit separate compensating fee-refund entries; it does not justify inventing them.
+I make E9 identify only E7's source debit posting. No fee-refund event or cascade policy is supplied, and I do not reconsider Auth-B's earlier decline. An append-only customer-ledger journal would permit separate compensating fee-refund postings; it does not justify inventing them.
 
 ### Claim-7 — Refuse: each BHD installment is 3.334
 
@@ -58,7 +58,7 @@ ACC-001: 0.10 + 0.09 + 0.25 + 0.17 + 0.16 + 0.16 = AED 0.93
 ACC-002: 0.000 + 0.000 + 0.000 + 0.000 + 0.004 + 0.004 = BHD 0.008
 ```
 
-I create no remainder state to discard or allocate. A mismatch would violate my selected invariant; the normal finalization path prevents it by construction rather than relying on the lower-level journal append primitive to recompute the sum.
+I create no remainder state to discard or allocate. The finalization path constructs the capitalization from the same rounded daily values, and the tests independently reconcile the stored accruals and resulting posting.
 
 ## Accepted criteria
 
@@ -88,9 +88,9 @@ I create no remainder state to discard or allocate. A mismatch would violate my 
 ### Approach-03 — Reversing every posting produced by the target event
 
 - **Why I considered it:** A generic event-to-postings lookup was a compact way to construct an opposite effect.
-- **Evidence that changed my decision:** It would also have claimed unsupported reversal behavior for settlements or other posting kinds, although the fixture defines only E9's reversal of direct debit E7.
+- **Evidence that changed my decision:** It would also have claimed unsupported reversal behavior for settlements or other posting kinds, although the fixture defines only E9's reversal of the posting produced by E7's `Debit` event.
 - **Why I abandoned it:** Reversal semantics depend on the originating domain command and cannot safely be generalized from a matching event ID alone.
-- **What replaced it:** My bounded reversal command targets direct debit postings only, links every compensating posting to the exact original record, and rejects missing, non-debit, or already-reversed targets.
+- **What replaced it:** My bounded reversal command targets postings produced by `Debit` events only, links every compensating posting to the exact original record, and rejects missing, unsupported, or already-reversed targets.
 - **Cost or limitation I retained:** Settlement refunds, credit corrections, fee refunds, and multi-stage payment reversals remain outside this core.
 
 ### Approach-04 — Identifying interest finalization only by its ending day
@@ -103,4 +103,6 @@ I create no remainder state to discard or allocate. A mismatch would violate my 
 
 ## Reference experiments retained, not rejected
 
-I used Formance and strict Numscript as external validation tools, not as abandoned deliverable implementations. They tested arithmetic, atomic movement, schema, and policy-placement boundaries. I had already selected Python for the deliverable and retained no Formance dependency. Likewise, I evaluated Clojure, Babashka, Joker, Go, and other languages but did not begin implementing the deliverable in them, so I do not inflate them into mid-build rejection entries.
+I used Formance and strict Numscript as external validation tools, not as abandoned deliverable implementations. They tested arithmetic, atomic movement, schema, and policy-placement boundaries. I also reviewed a Go/PostgreSQL double-entry example. Its transaction grouping, explicit debit/credit sides with positive magnitudes, atomic writes, and reconciliation were useful conceptual comparisons; its database, web surface, fixed four-decimal representation, and generic settlement account were not requirements for this exercise.
+
+I had already selected Python for the deliverable and retained no Formance or database dependency. Likewise, I evaluated Clojure, Babashka, Joker, Go, and other languages but did not begin implementing the deliverable in them, so I do not inflate them into mid-build rejection entries.

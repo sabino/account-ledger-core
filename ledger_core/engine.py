@@ -1,4 +1,4 @@
-"""Functional orchestration: input event -> staged facts -> one atomic append."""
+"""Functional orchestration from input events to validated atomic batches."""
 
 from __future__ import annotations
 
@@ -12,10 +12,11 @@ from ledger_core.journal import (
     active_hold_total,
     append_batch,
     authorization_view,
+    current_authorization_view,
     closing_balance,
     closing_balance_from_postings,
     finalized_through,
-    has_record_id,
+    has_overdraft_fee,
     interest_accruals,
     latest_commit_sequence,
     latest_recorded_day,
@@ -28,6 +29,7 @@ from ledger_core.model import (
     AuthorizationFact,
     AuthorizationRequested,
     AuthorizationSettled,
+    AuthorizationStatus,
     Credit,
     Debit,
     EventAccepted,
@@ -43,6 +45,7 @@ from ledger_core.model import (
     RejectionCode,
     SettlementRequested,
     StoredFact,
+    encode_record_component,
 )
 from ledger_core.policy import (
     AcceptSettlement,
@@ -191,17 +194,9 @@ def process_event(
     if not direct_postings:
         return _append_facts(ledger, event, policy, facts, receipt)
 
-    # Build and discard a candidate immutable value so every direct fact is
-    # validated before policy-derived fees are calculated.
-    candidate = append_batch(
-        ledger,
-        facts,
-        recorded_day=event.booked_day,
-        policy_version=policy.version,
-    )
     try:
         fees = _new_overdraft_fees(
-            candidate,
+            ledger,
             account,
             event,
             direct_postings,
@@ -462,14 +457,18 @@ def _stage_event_facts(
         return accepted, authorization_fact
 
     if isinstance(event, SettlementRequested):
-        current_authorization = authorization_view(
+        known_authorization = current_authorization_view(
+            ledger,
+            event.authorization_id,
+        )
+        effective_authorization = authorization_view(
             ledger,
             event.authorization_id,
             effective_through=event.value_day,
         )
         if (
-            current_authorization is not None
-            and current_authorization.account_id != event.account_id
+            known_authorization is not None
+            and known_authorization.account_id != event.account_id
         ):
             return (
                 EventRejected(
@@ -479,6 +478,12 @@ def _stage_event_facts(
                     "settlement account differs from the authorization account",
                 ),
             )
+        current_authorization = (
+            known_authorization
+            if known_authorization is not None
+            and known_authorization.status is not AuthorizationStatus.ACTIVE
+            else effective_authorization
+        )
         decision = decide_settlement(
             policy,
             authorization=current_authorization,
@@ -572,23 +577,25 @@ def _settlement_fact(
 
 
 def _new_overdraft_fees(
-    candidate: Ledger,
+    ledger: Ledger,
     account: Account,
     event: InputEvent,
     direct_postings: tuple[Posting, ...],
     policy: AssessmentPolicy,
 ) -> tuple[Posting, ...]:
     affected_from = min(posting.value_day for posting in direct_postings)
-    if affected_from >= event.booked_day:
+    latest_day = latest_recorded_day(ledger)
+    if affected_from >= event.booked_day and event.booked_day >= latest_day:
         return ()
-    horizon = latest_recorded_day(candidate)
+    horizon = max(event.booked_day, latest_day)
     return _missing_overdraft_fees(
-        candidate,
+        ledger,
         account,
         policy,
         start_day=affected_from,
         through_day=horizon,
         caused_by=event.event_id,
+        base_postings=direct_postings,
     )
 
 
@@ -632,6 +639,7 @@ def _missing_overdraft_fees(
     start_day: int,
     through_day: int,
     caused_by: str,
+    base_postings: tuple[Posting, ...] = (),
     prior_generated: tuple[Posting, ...] = (),
 ) -> tuple[Posting, ...]:
     existing = postings(ledger)
@@ -639,14 +647,14 @@ def _missing_overdraft_fees(
 
     for day in range(start_day, through_day + 1):
         record_id = _fee_record_id(account.account_id, day)
-        if has_record_id(ledger, record_id) or any(
+        if has_overdraft_fee(ledger, account.account_id, day) or any(
             posting.record_id == record_id
             for posting in (*prior_generated, *generated)
         ):
             continue
         close = closing_balance_from_postings(
             account,
-            (*existing, *prior_generated, *generated),
+            (*existing, *base_postings, *prior_generated, *generated),
             effective_through=day,
         )
         charge = fee_for_close(policy, account=account, closing=close)
@@ -749,29 +757,32 @@ def _commit_for_record(ledger: Ledger, record_id: str) -> int | None:
 
 
 def _event_record_id(event_id: str) -> str:
-    return f"event:{event_id}"
+    return f"event:{encode_record_component(event_id)}"
 
 
 def _posting_record_id(event_id: str, ordinal: int) -> str:
-    return f"posting:{event_id}:{ordinal}"
+    return f"posting:{encode_record_component(event_id)}:{ordinal}"
 
 
 def _authorization_record_id(
     authorization_id: str, outcome: str, event_id: str
 ) -> str:
-    return f"authorization:{authorization_id}:{outcome}:{event_id}"
+    return (
+        f"authorization:{encode_record_component(authorization_id)}:"
+        f"{outcome}:{encode_record_component(event_id)}"
+    )
 
 
 def _fee_record_id(account_id: str, day: int) -> str:
-    return f"fee:{account_id}:day:{day}"
+    return f"fee:{encode_record_component(account_id)}:day:{day}"
 
 
 def _interest_accrual_id(account_id: str, day: int) -> str:
-    return f"interest-accrual:{account_id}:day:{day}"
+    return f"interest-accrual:{encode_record_component(account_id)}:day:{day}"
 
 
 def _capitalization_id(account_id: str, day: int) -> str:
-    return f"interest-capitalization:{account_id}:day:{day}"
+    return f"interest-capitalization:{encode_record_component(account_id)}:day:{day}"
 
 
 def _interest_finalization_id(start_day: int, through_day: int) -> str:

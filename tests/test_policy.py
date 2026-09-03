@@ -17,6 +17,7 @@ from ledger_core.policy import (
     ApproveAuthorization,
     AssessmentPolicy,
     DeclineAuthorization,
+    Ratio,
     RejectSettlement,
     UnsupportedFeeCurrencyError,
     capitalization_total,
@@ -192,6 +193,12 @@ class AssessmentPolicyTest(unittest.TestCase):
             ),
             Money.parse(AED, "0.93"),
         )
+
+    def test_ratio_requires_integer_components(self) -> None:
+        with self.assertRaises(DomainInvariantError):
+            Ratio(True, 2_500)
+        with self.assertRaises(DomainInvariantError):
+            Ratio(1, True)
 
     def test_installment_split_delegates_to_exact_minor_unit_allocation(self) -> None:
         installments = split_installments(
