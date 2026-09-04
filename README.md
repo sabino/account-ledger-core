@@ -1,5 +1,7 @@
 # In-Memory Account Ledger Core
 
+The submitted revision is [5a15146](https://github.com/sabino/account-ledger-core/tree/5a15146c0b18a6e34a5c3deb5c18f29f67f42c25). Subsequent AI-assisted fixes reject authorization requests whose dates could bypass active holds and bind each policy label to its exact configuration within a ledger. These fixes were made after submission, not included in that revision. The architecture source and PDF remain the submitted versions; the supplied replay results are unchanged. See `AMBIGUITIES.md` and `WORKLOG.md` for the later behavior and its limitations.
+
 This project replays the supplied ten events and answers four questions for each day: What is the balance? Which fees were charged? What happened to authorizations? Which events failed?
 
 The design fits in one line:

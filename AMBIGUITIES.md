@@ -54,6 +54,8 @@ I apply 0.04% to every positive close in that account's own currency and precisi
 
 The same event ID and content is an idempotent no-op. Different content with the same ID is an error. Derived IDs use stable business dimensions.
 
+Post-submission hardening: both event processing and finalization bind each policy version to an exact immutable `AssessmentPolicy` configuration within the returned ledger. Reusing that version with a different fee or rate raises `PolicyVersionConflictError` before processing, including on retries. Identical configurations remain valid retries. This is local configuration evidence, not a durable or effective-dated policy registry; callers still use the trusted engine boundary. A new label may identify different rules before finalization, but does not retrospectively recalculate prior decisions.
+
 ## AMB-14 — Required failing test
 
 I keep it in `known_limitation/` with a separate command so the correctness suite stays green. Finalization ends this bounded replay, so every later event is rejected. The test exposes missing controlled post-finalization correction handling.
@@ -77,6 +79,12 @@ The prompt gives no counterpart accounts. I model customer-account effects only 
 ## AMB-19 — Declined versus rejected
 
 E8 is an accepted request with a declined business outcome. E6 is a rejected request because its requested settlement cannot be performed.
+
+## AMB-20 — Dates on new authorizations (post-submission)
+
+A historical availability projection cannot safely approve a new hold: it can omit another hold already active now. This bounded core accepts authorization dates only when value day equals booked day and booked day is at least the latest recorded day in the journal. Earlier booked days, backdated value days, and future value days receive `AUTHORIZATION_DATE_UNSUPPORTED` without creating a hold. Ordinary current-day requests still use the available-balance test and may be declined.
+
+The journal's shared booked-day high-water mark remains the clock for this exercise. Historical authorization ingestion and scheduled reservations need their own policy and are unsupported. Prior-day account-local maintenance may still append fees before the request's rejection, as for other rejected requests. Historical credits and debits retain their existing behavior.
 
 ## The two choices most likely to be challenged
 
