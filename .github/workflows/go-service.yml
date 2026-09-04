@@ -29,6 +29,8 @@ jobs:
         run: |
           curl --fail http://localhost:8088/readyz
           curl --fail http://localhost:8088/api/reconciliation | jq -e '.ok == true'
+          node service/tests/analytics-smoke.mjs
+          node service/tests/http-smoke.mjs
       - name: Verify expired host lease blocks both replicas
         run: |
           docker compose stop watchdog

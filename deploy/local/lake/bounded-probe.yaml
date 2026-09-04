@@ -1,0 +1,54 @@
+# Isolated storage compatibility probe. Does not mount the working lake volume.
+name: ledger-lake-probe
+services:
+  setup:
+    image: chrislusf/seaweedfs:4.45@sha256:fc9f76fa993ad69966ffeb2f65d0318fcae39c6f8e20cf68ef7b3a5cb97769e5
+    entrypoint: [/bin/sh, -ec]
+    command:
+      [
+        "weed shell -master=lake:9333 -filer=lake:8888 < /config/bounded-bootstrap.weed",
+      ]
+    volumes: ["./bounded-bootstrap.weed:/config/bounded-bootstrap.weed:ro"]
+    depends_on: { lake: { condition: service_healthy } }
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.2
+    restart: "no"
+  lake:
+    image: chrislusf/seaweedfs:4.45@sha256:fc9f76fa993ad69966ffeb2f65d0318fcae39c6f8e20cf68ef7b3a5cb97769e5
+    command:
+      - server
+      - -dir=/data
+      - -ip=lake
+      - -ip.bind=0.0.0.0
+      - -filer
+      - -s3
+      - -s3.config=/config/s3.json
+      - -s3.port.lance=0
+      - -master.volumeSizeLimitMB=32
+      - -master.telemetry=false
+      - -volume.max=8
+      - -volume.fileSizeLimitMB=4
+      - -volume.compactionMBps=2
+      - -volume.maintenanceMBps=2
+      - -filer.concurrentUploadLimitMB=8
+      - -filer.concurrentFileUploadLimit=2
+      - -s3.concurrentUploadLimitMB=8
+      - -s3.concurrentFileUploadLimit=2
+    volumes:
+      - data:/data
+      - ./s3.json:/config/s3.json:ro
+      - ./bounded-filer.toml:/etc/seaweedfs/filer.toml:ro
+    mem_limit: 192m
+    memswap_limit: 192m
+    cpus: 0.2
+    pids_limit: 64
+    restart: "no"
+    logging: { driver: json-file, options: { max-size: 2m, max-file: "2" } }
+    healthcheck:
+      test: [CMD-SHELL, "wget -q -O /dev/null http://127.0.0.1:8333/status"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+volumes:
+  data:

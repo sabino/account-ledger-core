@@ -10,7 +10,8 @@ Status: the matrices below describe target coverage, not blanket completion. The
 | Competing writes and retries | Other integration tests in that file | Two independent database connections; not a network-partition experiment |
 | Arbitrary transfers | `service/internal/store/arbitrary_test.go` | 500 seeded transfers against a separate balance model; not all command kinds |
 | Host lease safety | `service/internal/hostguard/guard_test.go`, `service/internal/store/watchdog_test.go`, `service/tests/guard-smoke.mjs` | Local expiry and role-boundary checks; VPS calibration remains pending |
-| HTTP retry and delivery pause | `service/tests/http-smoke.mjs` | Current inbox is in the same database, not a network sink |
+| HTTP retry and delivery pause | `service/tests/http-smoke.mjs`, `service/internal/store/network_delivery_test.go` | Signed HTTP receiver and lost-ack retry; receiver still shares PostgreSQL, not independent downstream durability |
+| Currency-scoped event analytics | `service/internal/store/analytics_test.go`, `service/tests/analytics-smoke.mjs` | Recorded decisions, not request attempts, latency, or CDC freshness |
 | Lake read-back | `deploy/local/lake/verify.sql`, local observations in WORKLOG | All 12 fixture batches and counterpart totals; graceful CDC restart only |
 | Logical backup/restore | `service/tests/backup-restore.mjs` | Local API writers paused, same cluster roles, no slots/lake/PITR recovery |
 

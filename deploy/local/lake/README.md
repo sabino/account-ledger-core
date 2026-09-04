@@ -23,6 +23,8 @@ The upstream release image index referenced a missing manifest. The working upst
 
 ## Limits still required before deployment
 
+The separate [bounded allocation probe](BOUNDED-PROBE.md) verifies that the full `server` mode can enforce a finite volume-slot allowance and preserve an acknowledged object through exhaustion and restart. It does not change the default lake profile or establish a total filesystem quota.
+
 - SeaweedFS `mini` derives its volume allowance from available disk space. The small volume-file setting is **not** a total disk quota. Do not deploy this default to the shared VPS.
 - Limiting old metadata files does not expire Iceberg snapshots or reclaim their data files. Snapshot retention, compaction, and bounded cleanup are not implemented here.
 - PostgreSQL's retained-slot WAL limit is checked at checkpoints, not a hard instantaneous disk quota. Slot invalidation requires an explicit recovery procedure and reconciliation, not silent continuation.

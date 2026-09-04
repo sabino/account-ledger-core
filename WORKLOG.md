@@ -303,3 +303,13 @@ The dashboard now has a dark navigation shell, event time series, outcome and pr
 The charts include exact bucket tables, empty states, and stale-data messages. There are no invented percentages or HTTP latency metrics. The responsive rules stack panels and navigation at smaller widths while keeping wide accounting tables scrollable. Sites and visualization guidance informed the layout and metric definitions; the implementation remains in the existing Go application, with no third-party branding or crypto panels. AI assistance remains disclosed.
 
 Codex rebuilt the local preview on port 8088. TypeScript and formatting checks passed. HTTP checks passed for both currencies and all three windows, invalid filters, and the blocked internal route. The transfer smoke test also passed idempotency, conflict, reconciliation, and delivery pause/recovery through the two-replica stack. These are code and HTTP checks, not browser interaction or responsive visual QA; that visual verification remains pending. The VPS was not changed.
+
+### 20:57:00 — Check · Stop lake allocation before using the host's free disk
+
+The pinned SeaweedFS mini command does not expose a volume-count limit. Running its help command inside the existing constrained local lake coincided with an exit-137 probe and one lake restart. The lake recovered; subsequent command probes ran in separate disposable containers. This is also why the earlier short memory samples are not treated as worst-case evidence.
+
+An isolated full-server configuration now uses eight 32 MiB volume slots, with explicit persistent filer metadata and separate upload, CPU, memory, and log limits. Catalog authentication worked. The first arbitrary upload inside the table bucket returned 403, so it was not counted as a capacity test. A regular test bucket on the same isolated server accepted eleven 3 MiB objects, then refused the next write. Logs confirmed allocation exhaustion, and an earlier object's checksum matched both before and after a container restart.
+
+Seven slots had already been allocated to metadata, leaving only one for that bucket. This is not 256 MiB of usable capacity, a filesystem quota, or a tested Iceberg retention policy. The evidence and commands are in `deploy/local/lake/BOUNDED-PROBE.md`. The working local lake and the VPS were not migrated. A fresh read-only VPS check still showed about 1,633 MiB available RAM, so the earlier 1,280 MiB full-stack ceilings plus reserve still do not fit.
+
+Codex performed these local checks while the delegated agent worked only on the frontend. The worklog keeps that assistance explicit. Existing HTTP analytics and pause/recovery smoke tests are now included in the CI workflow; this records configuration, not a claim that remote CI has run.
