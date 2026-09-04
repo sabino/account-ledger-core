@@ -26,25 +26,23 @@ One event call may append two ordered batches: a prior-day fee batch, then the e
 
 Business rules live in policy and orchestration. The journal checks that the facts produced by those rules fit together: currency matches the account, direct postings match their event, authorization transitions match their request, settlements consume an active hold only once, and reversals point to one exact debit.
 
-This is a **customer-account subledger**. A positive posting increases the customer's displayed balance and a negative posting reduces it. It is not the bank's complete accounting book because the prompt gives only the customer side of each movement. The missing side is the largest deliberate cut in this design, explained on page 4.
+This is a **customer-account subledger**. A positive posting increases the customer's displayed balance and a negative posting reduces it. It is not the bank's complete accounting book because the prompt gives only the customer side of each movement. The missing side is the largest deliberate cut in this design, explained below.
 
 ## Append-only at 100x
 
-Append-only is useful because the story remains explainable, but the current data structure pays for that clarity with repeated work. The ledger is an immutable tuple. Each append copies the tuple, several validations scan earlier facts, and replay can retain previous ledger versions.
+Append-only keeps the story explainable. At 100x volume, **speed and memory break first**. Each append copies the immutable ledger tuple, several validations rescan earlier facts, and replay retains full-prefix snapshots. The journal's fact history grows without bound by design; those replay snapshots add avoidable quadratic state on top of it.
 
 The supplied stream has ten events. At 100 times that input, the core would process about 1,000 events. Because repeated copying and retained prefixes can grow roughly with the square of the event count, that part of the work can become about 10,000 times larger. This is an explanation of the algorithm, not a throughput benchmark.
 
 <!-- VISUAL: scale -->
 
-### Two failures, not one
+### A separate correctness failure
 
-**It becomes slow and memory-hungry.** The core repeatedly walks and copies history that did not change.
-
-**It has no official winner between concurrent writes.** Two writers can read the same version, both approve their event, and both create a different successor with the same sequence number. Both results can look valid in isolation.
+Concurrency is not the first 100x capacity failure: it is already unsafe with two writers. Both can read the same version, approve their event, and create a different successor with the same sequence number. Both results can look valid in isolation.
 
 ### Cheapest change first
 
-I would first stop retaining full snapshots after every replay step. Keep one current ledger, record only the newly appended range for each step, and add indexes for frequent lookups such as account postings, authorizations, fees, and reversals. This improves the current design without changing its business behavior.
+The cheapest structural change is to stop retaining full snapshots after every replay step. Keep one current ledger and only the newly appended range for each step. That removes the avoidable prefix copies without changing business behavior. Next, add indexes for frequent lookups such as account postings, authorizations, fees, and reversals.
 
 The next production step is one transactional database writer:
 
@@ -58,11 +56,11 @@ I would not start with Kafka, microservices, sharding, or multi-region writes. T
 
 ## Value-dated entries in production
 
-An entry has two dates and one sequence. **Booking date** says when the bank recorded it. **Value date** says when its financial effect applies. **Journal sequence** says where it sits in the append order.
+An entry has two dates and one sequence. **Booking date** says when the bank recorded it. **Value date** says when its financial effect applies. **Journal sequence** says which committed batch came first.
 
 <!-- VISUAL: clocks -->
 
-A late entry is appended now but can carry an earlier value date. No existing record changes. A recalculated past balance may change because it includes one more fact, which can affect fees, interest, statements, reconciliation, and downstream data. The previously issued result remains stored; a correction creates a linked replacement.
+A late entry is appended now but can carry an earlier value date. No existing record changes. A recalculated past balance may change because it includes one more fact, which can affect fees, interest, statements, reconciliation, and downstream data. In production, the previously issued result must remain stored, and a correction must create a linked replacement.
 
 I assume “UAE-licensed bank” means an institution licensed and supervised by the CBUAE. Its consumer standards require statements to show opening and closing balances, deposits, withdrawals, interest or profit, and fees,[^1] with accurate disclosures and calculations.[^2] UAE AML/CFT rules also require records sufficient to reconstruct individual transactions.[^3] These rules do not prescribe this architecture, but they make untracked corrections risky.
 
@@ -81,7 +79,7 @@ Until those steps succeed, the issued result stays unchanged. This prevents an u
 
 An authorization is a reservation, not a debit. It reduces the amount still available to spend. Settlement is the later event that actually removes money and releases any unused reservation.
 
-The current model supports approval, decline, and one final settlement. A decline ends the request before a hold exists. An approved hold has no non-settlement ending here. Production must add:
+For an approved authorization, the honest answer in this model is **none**: only one final settlement ends it. The only other terminal request outcome represented is **decline**: insufficient available balance records a decline once and creates no hold. Production must add these non-settlement endings:
 
 <!-- VISUAL: authorization -->
 
@@ -95,7 +93,7 @@ Each ending is idempotent, and a later settlement against that ended hold is rej
 
 ### The biggest cut: this is not double-entry
 
-The current core records one customer-facing effect. A real double-entry transaction records at least one debit and one credit, and the totals must be equal. For a bank, a customer's deposit is a liability: the bank owes that money to the customer.[^4]
+The prompt supplies no counter-account, so this core records only the customer side. In production, it could sit behind a balanced general-ledger boundary: every overall movement needs counterpart entries and reconciliation. A real double-entry transaction has equal debits and credits. A customer deposit is a bank liability: money owed to the customer.[^4]
 
 The deposit example below is conceptual. It shows the missing accounting shape; it does not claim that the assessment supplied a real cash or settlement account.
 
@@ -113,13 +111,12 @@ Those are the accounting guarantees. Production safety adds immutable posted ent
 
 ### Other deliberate cuts
 
-- **No persistence:** fine for a six-day replay; production needs a durable append and restore tests.
-- **No FX:** the supplied accounts never exchange currencies; production FX needs a sourced rate, quote time, rounding rule, and gain or loss treatment.
-- **Integer days:** deterministic here; production needs real dates and timestamps, business calendars, cut-off rules, and explicit period status.
-- **One final window:** capitalization ends this replay; production needs recurring period close and controlled late correction.
-- **One final authorization capture:** enough here; production needs tested expiry, void, reversal, adjustment, and partial-capture transitions. Refunds and disputes belong after settlement.
-- **Trusted function calls:** authentication is out of scope; production needs actor identity, authorization, audit evidence, and controlled delivery.
-- **One global sequence:** fine here; production must measure its limit before adding ordered account ownership without breaking transfers.
+- **No persistence:** sufficient for a six-day replay, but a crash can erase the journal. Production needs durable atomic append and tested restoration.
+- **Thin currency and product rules:** the fixture has no FX and supplies only an AED fee. Missing rules can block a close or misprice it; production needs effective-dated configuration and sourced, explicitly rounded FX.
+- **Integer days and one terminal close:** these match the fixture but omit real cut-offs, calendars, recurring periods, and post-close correction. Production needs timestamps, period state, and the controlled workflow above.
+- **Narrow payment lifecycle:** the fixture needs only one final capture and direct-debit-principal reversal. Production needs expiry, void, partial capture, and explicit settlement, fee, refund, and dispute corrections.
+- **Policy label and trusted local calls:** enough for local replay, but a version string and caller are not evidence. Production needs immutable effective-dated policy identity, actor controls, audit, and controlled delivery.
+- **One global sequence:** enough for one replay, but concurrency and multi-account transfers lack a durable atomic winner. Production needs ordered transactions before measured partitioning.
 
 I would first make one ledger balanced, durable, recoverable, controlled, and reconcilable. I would distribute it only after measurements show which limit needs it. The tests prove the six-day behavior, not a full production bank ledger.
 

@@ -51,9 +51,7 @@ LINE = HexColor("#CBD5DE")
 WHITE = colors.white
 
 PAGE_BREAK_HEADINGS = {
-    "Append-only at 100x",
-    "Value-dated entries in production",
-    "What I cut and why",
+    'What "double-entry" must mean',
 }
 
 
@@ -373,7 +371,7 @@ def clocks_visual(styles: dict[str, ParagraphStyle]) -> Table:
     top = [
         visual_cell("BOOKING DATE", "When the bank records it", styles),
         visual_cell("VALUE DATE", "When the financial effect applies", styles),
-        visual_cell("JOURNAL SEQUENCE", "Its exact append order", styles),
+        visual_cell("JOURNAL SEQUENCE", "Which batch was committed first", styles),
     ]
     ripple = Paragraph(
         inline_markup(
@@ -600,14 +598,17 @@ def parse_markdown(styles: dict[str, ParagraphStyle]) -> list[object]:
 
         if line.startswith("## "):
             heading = line[3:]
-            if heading in PAGE_BREAK_HEADINGS:
+            if ascii_punctuation(heading) in PAGE_BREAK_HEADINGS:
                 story.append(PageBreak())
             story.append(Paragraph(inline_markup(heading), styles["h2"]))
             index += 1
             continue
 
         if line.startswith("### "):
-            story.append(Paragraph(inline_markup(line[4:]), styles["h3"]))
+            heading = line[4:]
+            if ascii_punctuation(heading) in PAGE_BREAK_HEADINGS:
+                story.append(PageBreak())
+            story.append(Paragraph(inline_markup(heading), styles["h3"]))
             index += 1
             continue
 
