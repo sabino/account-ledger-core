@@ -1,0 +1,61 @@
+# Experimental limits, not approved deployment settings. Use a separate project.
+services:
+  api-a:
+    mem_limit: 64m
+    memswap_limit: 64m
+    cpus: 0.15
+    environment: { GOMEMLIMIT: 40MiB }
+  api-b:
+    mem_limit: 64m
+    memswap_limit: 64m
+    cpus: 0.15
+    environment: { GOMEMLIMIT: 40MiB }
+  watchdog:
+    mem_limit: 32m
+    memswap_limit: 32m
+    environment: { GOMEMLIMIT: 20MiB }
+  proxy:
+    mem_limit: 32m
+    memswap_limit: 32m
+    cpus: 0.05
+  postgres:
+    mem_limit: 192m
+    memswap_limit: 192m
+    cpus: 0.25
+    command:
+      [
+        postgres,
+        -c,
+        shared_buffers=48MB,
+        -c,
+        work_mem=1MB,
+        -c,
+        max_connections=30,
+        -c,
+        wal_level=logical,
+        -c,
+        max_replication_slots=2,
+        -c,
+        max_wal_senders=3,
+        -c,
+        max_slot_wal_keep_size=512MB,
+        -c,
+        max_wal_size=1GB,
+      ]
+  lake:
+    mem_limit: 192m
+    memswap_limit: 192m
+    cpus: 0.15
+  cdc:
+    mem_limit: 448m
+    memswap_limit: 448m
+    cpus: 0.25
+    environment:
+      JAVA_OPTS: "-Xms64m -Xmx256m -XX:MaxDirectMemorySize=64m -XX:ActiveProcessorCount=2"
+  clickhouse:
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.25
+    volumes:
+      - ./deploy/local/lake/budget-server.xml:/etc/clickhouse-server/config.d/zz-budget.xml:ro
+      - ./deploy/local/lake/budget-users.xml:/etc/clickhouse-server/users.d/zz-budget.xml:ro

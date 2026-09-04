@@ -265,3 +265,11 @@ This is admission control, not a promise that every container stops consuming re
 The recovery drill briefly stopped only the two local API containers, took a 703,072-byte custom-format PostgreSQL backup, and restored it into a newly created disposable database. SHA-256 fingerprints matched all rows in 12 financial and delivery tables. The restored journal had no unbalanced batches, and the runtime role still lacked journal update, posting delete, and host-lease update permissions. Restore plus verification took about 6.3 seconds for this small dataset; that is not a production recovery-time estimate.
 
 The disposable database was removed and both API containers returned healthy. The source database was not replaced or erased. This test reuses cluster roles, pauses writers, and does not recover replication slots, Iceberg storage, or an entire lost host. Those remain separate tests. Codex implemented and ran the drill with my authorization. I also separated checked local evidence from planned coverage in the decision matrix.
+
+### 20:18:00 — Check · Try the complete local stack with smaller limits
+
+The separate `ledger-budget` project started all eight runtime services with memory ceilings totaling 1,280 MiB and no additional container swap allowance. The first test checked the lake too early, before the initial snapshot completed. An explicit catch-up check now separates data readiness from a running container.
+
+The subsequent short experiment committed 619 batches, read the fixture repeatedly through ClickHouse, and finished with successful reconciliation. No container restarted or reported an OOM kill. The requested 20/sec boost returned to baseline automatically; the test does not claim sustained 20/sec throughput. Sampled memory observations and exact limits are recorded in `deploy/local/BUDGET.md`.
+
+The production host still had only 1,631 MiB available in a read-only check. Adding a 512 MiB reserve to these ceilings exceeds that headroom, so this is not deployment approval. Codex performed the experiment locally. No production service was changed, and the main local dashboard remained on port 8088.
