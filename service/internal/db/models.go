@@ -42,6 +42,15 @@ type Control struct {
 	GuardReason      string             `json:"guard_reason"`
 }
 
+type DeliveryAttemptEvent struct {
+	Token      string             `json:"token"`
+	Phase      string             `json:"phase"`
+	RunID      string             `json:"run_id"`
+	Sequence   int64              `json:"sequence"`
+	Instance   string             `json:"instance"`
+	RecordedAt pgtype.Timestamptz `json:"recorded_at"`
+}
+
 type FeeAssessment struct {
 	RunID     string `json:"run_id"`
 	AccountID string `json:"account_id"`
@@ -96,6 +105,8 @@ type Outbox struct {
 	Attempts    int32              `json:"attempts"`
 	ReadyAt     pgtype.Timestamptz `json:"ready_at"`
 	DeliveredAt pgtype.Timestamptz `json:"delivered_at"`
+	LeaseToken  pgtype.Text        `json:"lease_token"`
+	LeaseUntil  pgtype.Timestamptz `json:"lease_until"`
 }
 
 type Period struct {

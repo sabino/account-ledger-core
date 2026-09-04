@@ -1,4 +1,7 @@
 name: ledger-lab
+x-delivery: &delivery
+  DELIVERY_SECRET: local-delivery-secret-not-for-production
+  DELIVERY_URLS: http://api-a:8080/internal/notifications,http://api-b:8080/internal/notifications
 x-app: &app
   build: ./service
   image: ledger-lab:local
@@ -151,10 +154,10 @@ services:
     healthcheck: {disable: true}
   api-a:
     <<: *app
-    environment: {DATABASE_URL: "postgres://ledger_app:local-demo-only@postgres:5432/ledger?sslmode=disable", INSTANCE_ID: replica-a, GOMEMLIMIT: 80MiB}
+    environment: {<<: *delivery, DATABASE_URL: "postgres://ledger_app:local-demo-only@postgres:5432/ledger?sslmode=disable", INSTANCE_ID: replica-a, GOMEMLIMIT: 80MiB}
   api-b:
     <<: *app
-    environment: {DATABASE_URL: "postgres://ledger_app:local-demo-only@postgres:5432/ledger?sslmode=disable", INSTANCE_ID: replica-b, GOMEMLIMIT: 80MiB}
+    environment: {<<: *delivery, DATABASE_URL: "postgres://ledger_app:local-demo-only@postgres:5432/ledger?sslmode=disable", INSTANCE_ID: replica-b, GOMEMLIMIT: 80MiB}
   proxy:
     image: nginx:1.28.2-alpine@sha256:5b4900b042ccfa8b0a73df622c3a60f2322faeb2be800cbee5aa7b44d241649e
     ports: ["127.0.0.1:${LEDGER_HTTP_PORT:-8088}:8080"]

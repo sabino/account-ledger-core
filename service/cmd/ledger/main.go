@@ -12,9 +12,11 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/sabino/account-ledger-core/service/internal/delivery"
 	"github.com/sabino/account-ledger-core/service/internal/store"
 )
 
@@ -64,7 +66,23 @@ func main() {
 		}
 		return
 	}
+	secret := os.Getenv("DELIVERY_SECRET")
+	urls := strings.Split(os.Getenv("DELIVERY_URLS"), ",")
+	if len(secret) < 32 || urls[0] == "" {
+		log.Fatal("explicit delivery endpoints and secret required")
+	}
+	senders := make([]func(context.Context, []byte) error, len(urls))
+	for i, url := range urls {
+		senders[i] = delivery.Sender(url, secret)
+	}
+	nextSink := 0
+	db.SendNotification = func(ctx context.Context, body []byte) error {
+		send := senders[nextSink%len(senders)]
+		nextSink++
+		return send(ctx, body)
+	}
 	mux := http.NewServeMux()
+	mux.Handle("POST /internal/notifications", delivery.Handler(secret, db.ReceiveNotification))
 	sem := make(chan struct{}, 4)
 	reply := func(w http.ResponseWriter, v any, e error) {
 		w.Header().Set("Content-Type", "application/json")
@@ -104,6 +122,19 @@ func main() {
 	})
 	mux.HandleFunc("GET /api/accounts", func(w http.ResponseWriter, r *http.Request) {
 		value, err := db.Accounts(r.Context(), "demo")
+		reply(w, value, err)
+	})
+	mux.HandleFunc("GET /api/analytics", func(w http.ResponseWriter, r *http.Request) {
+		currency := r.URL.Query().Get("currency")
+		window := r.URL.Query().Get("window")
+		seconds, ok := map[string]int32{"": 3600, "10m": 600, "1h": 3600, "24h": 86400}[window]
+		if !ok || (currency != "" && currency != "AED" && currency != "BHD") {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		value, err := db.Analytics(ctx, "demo", currency, seconds)
 		reply(w, value, err)
 	})
 	mux.HandleFunc("GET /api/fixture", func(w http.ResponseWriter, r *http.Request) {

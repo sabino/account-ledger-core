@@ -58,27 +58,6 @@ func (s *Store) Generate(ctx context.Context) error {
 	return s.Queries.AcknowledgeGeneratedCommand(ctx, ordinal)
 }
 
-// The first delivery adapter uses a durable local inbox, not a network sink.
-func (s *Store) Deliver(ctx context.Context) error {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-	queries := s.Queries.WithTx(tx)
-	item, err := queries.ClaimDelivery(ctx)
-	if err != nil {
-		return err
-	}
-	if err = queries.AcceptDelivery(ctx, db.AcceptDeliveryParams{RunID: item.RunID, Sequence: item.Sequence}); err != nil {
-		return err
-	}
-	if err = queries.CompleteDelivery(ctx, db.CompleteDeliveryParams{RunID: item.RunID, Sequence: item.Sequence}); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
-}
-
 func (s *Store) Workers(ctx context.Context) {
 	fast := time.NewTicker(50 * time.Millisecond)
 	defer fast.Stop()
@@ -133,8 +112,8 @@ func (s *Store) Status(ctx context.Context) (map[string]any, error) {
 		"sequence": fmt.Sprint(state.Position), "guard_reason": state.GuardReason,
 		"pause_reason": state.PauseReason, "guard_fresh": state.Fresh,
 		"pending_deliveries": state.Pending, "database_bytes": state.DatabaseBytes,
-		"replicas": replicas, "serving_instance": s.Instance, "cdc": "not implemented",
-		"host_guard": host, "profile": "continuous transfers; separate six-day assessment replay"}, nil
+		"replicas": replicas, "serving_instance": s.Instance, "cdc": "optional lake profile; freshness not observed by this endpoint",
+		"host_guard": host, "profile": "synthetic scenario mix; separate six-day assessment replay"}, nil
 }
 
 func (s *Store) SetRate(ctx context.Context, eps int32) error {

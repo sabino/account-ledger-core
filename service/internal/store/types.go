@@ -19,9 +19,10 @@ import (
 var migrations embed.FS
 
 type Store struct {
-	Pool     *pgxpool.Pool
-	Queries  *db.Queries
-	Instance string
+	SendNotification func(context.Context, []byte) error
+	Pool             *pgxpool.Pool
+	Queries          *db.Queries
+	Instance         string
 }
 
 type Command struct {
