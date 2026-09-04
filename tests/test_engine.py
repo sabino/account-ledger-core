@@ -52,10 +52,10 @@ class ReplayEngineTest(unittest.TestCase):
         )
         self.assertEqual(result.steps[8].receipt.event.booked_day, 6)
         self.assertEqual(result.steps[9].receipt.event.booked_day, 5)
-        self.assertEqual(result.steps[8].commit_sequence, 9)
-        self.assertEqual(result.steps[9].commit_sequence, 10)
+        self.assertEqual(result.steps[8].commit_sequence, 10)
+        self.assertEqual(result.steps[9].commit_sequence, 11)
 
-    def test_regressed_booked_day_rescans_through_the_known_horizon(self) -> None:
+    def test_regressed_booked_day_rescans_closed_days_not_the_open_day(self) -> None:
         later_day = process_event(
             empty_assessment_ledger(),
             Credit(
@@ -83,7 +83,7 @@ class ReplayEngineTest(unittest.TestCase):
         self.assertIsInstance(earlier_day.receipt, EventAccepted)
         self.assertEqual(
             tuple(fee.value_day for fee in fee_postings(earlier_day.ledger)),
-            (5, 6),
+            (5,),
         )
         self.assertEqual(
             closing_balance(
@@ -91,8 +91,108 @@ class ReplayEngineTest(unittest.TestCase):
                 "ACC-001",
                 effective_through=6,
             ),
-            Money.parse(AED, "-51.00"),
+            Money.parse(AED, "-26.00"),
         )
+
+    def test_same_booked_day_rescue_does_not_leave_a_premature_fee(self) -> None:
+        funded = process_event(
+            empty_assessment_ledger(),
+            Credit(
+                "initial-funds",
+                1,
+                "ACC-001",
+                Money.parse(AED, "100.00"),
+                1,
+            ),
+            self.policy,
+        )
+        backdated_debit = process_event(
+            funded.ledger,
+            Debit(
+                "backdated-debit",
+                5,
+                "ACC-001",
+                Money.parse(AED, "150.00"),
+                1,
+            ),
+            self.policy,
+        )
+        rescued = process_event(
+            backdated_debit.ledger,
+            Credit(
+                "same-booked-day-rescue",
+                5,
+                "ACC-001",
+                Money.parse(AED, "200.00"),
+                1,
+            ),
+            self.policy,
+        )
+
+        self.assertEqual(
+            tuple(fee.value_day for fee in fee_postings(rescued.ledger)),
+            (1, 2, 3, 4),
+        )
+        self.assertEqual(
+            closing_balance(rescued.ledger, "ACC-001", effective_through=5),
+            Money.parse(AED, "50.00"),
+        )
+
+    def test_regressed_non_posting_event_closes_its_accounts_known_horizon(
+        self,
+    ) -> None:
+        negative_day_five = process_event(
+            empty_assessment_ledger(),
+            Debit(
+                "aed-negative-day-five",
+                5,
+                "ACC-001",
+                Money.parse(AED, "1.00"),
+                5,
+            ),
+            self.policy,
+        )
+        other_account_day_six = process_event(
+            negative_day_five.ledger,
+            Credit(
+                "bhd-day-six",
+                6,
+                "ACC-002",
+                Money.parse(BHD, "1.000"),
+                6,
+            ),
+            self.policy,
+        )
+
+        authorization = process_event(
+            other_account_day_six.ledger,
+            AuthorizationRequested(
+                "late-day-five-authorization",
+                5,
+                "ACC-001",
+                "Auth-late-day-five",
+                Money.parse(AED, "1.00"),
+                5,
+            ),
+            self.policy,
+        )
+
+        self.assertEqual(
+            tuple(fee.value_day for fee in fee_postings(authorization.ledger)),
+            (5,),
+        )
+        self.assertEqual(
+            {record.commit_sequence for record in authorization.appended},
+            {3, 4},
+        )
+        view = authorization_view(
+            authorization.ledger,
+            "Auth-late-day-five",
+            effective_through=5,
+        )
+        self.assertIsNotNone(view)
+        assert view is not None
+        self.assertIs(view.status, AuthorizationStatus.DECLINED)
 
     def test_missing_authorization_is_a_rejected_event_without_money_moving(self) -> None:
         result = replay_events(
@@ -202,7 +302,7 @@ class ReplayEngineTest(unittest.TestCase):
         self.assertEqual(auth_b.active_hold, Money.zero(AED))
         self.assertEqual(
             closing_balance(result.ledger, "ACC-001", effective_through=5),
-            Money.parse(AED, "-230.00"),
+            Money.parse(AED, "-205.00"),
         )
 
     def test_replaying_identical_event_is_an_idempotent_noop(self) -> None:
@@ -292,17 +392,17 @@ class ReplayEngineTest(unittest.TestCase):
         self.assertIs(result.receipt.code, RejectionCode.CURRENCY_MISMATCH)
         self.assertEqual(postings(result.ledger), ())
 
-    def test_e7_generates_three_stable_fees_in_the_same_atomic_commit(self) -> None:
+    def test_e7_generates_fees_only_for_days_closed_before_day_five(self) -> None:
         result = replay_events(
             empty_assessment_ledger(), assessment_events()[:7], self.policy
         )
         e7 = result.steps[-1]
         fees = fee_postings(result.ledger, account_id="ACC-001")
 
-        self.assertEqual(tuple(fee.value_day for fee in fees), (2, 4, 5))
+        self.assertEqual(tuple(fee.value_day for fee in fees), (2, 4))
         self.assertEqual(
             tuple(fee.amount for fee in fees),
-            (Money.parse(AED, "-25.00"),) * 3,
+            (Money.parse(AED, "-25.00"),) * 2,
         )
         self.assertEqual({fact.commit_sequence for fact in e7.appended}, {7})
         self.assertEqual(
@@ -310,9 +410,24 @@ class ReplayEngineTest(unittest.TestCase):
             (
                 "fee:ACC-001:day:2",
                 "fee:ACC-001:day:4",
-                "fee:ACC-001:day:5",
             ),
         )
+
+    def test_processing_result_exposes_prior_day_fee_and_event_commits(self) -> None:
+        before_e9 = replay_events(
+            empty_assessment_ledger(), assessment_events()[:8], self.policy
+        ).ledger
+
+        e9 = process_event(before_e9, assessment_events()[8], self.policy)
+
+        self.assertEqual(e9.commit_sequence, 10)
+        self.assertEqual(
+            tuple(record.commit_sequence for record in e9.appended),
+            (9, 10, 10),
+        )
+        fee = e9.appended[0]
+        self.assertEqual(fee.fact.record_id, "fee:ACC-001:day:5")
+        self.assertIsInstance(e9.receipt, EventAccepted)
 
     def test_e9_compensates_e7_principal_and_preserves_fees(self) -> None:
         result = replay_events(
@@ -369,8 +484,9 @@ class ReplayEngineTest(unittest.TestCase):
         expected_day_2 = {
             2: Money.parse(AED, "250.00"),
             7: Money.parse(AED, "-395.00"),
-            9: Money.parse(AED, "225.00"),
+            9: Money.parse(AED, "-395.00"),
             10: Money.parse(AED, "225.00"),
+            11: Money.parse(AED, "225.00"),
         }
 
         for known_through, expected in expected_day_2.items():
@@ -500,6 +616,45 @@ class ReplayEngineTest(unittest.TestCase):
             )
         )
 
+    def test_post_finalization_forward_event_is_an_explicit_bounded_core_rejection(
+        self,
+    ) -> None:
+        replay = replay_events(
+            empty_assessment_ledger(), assessment_events(), self.policy
+        )
+        finalization = finalize_interest(
+            replay.ledger,
+            self.policy,
+            start_day=1,
+            through_day=6,
+        )
+        next_window_credit = Credit(
+            "NEXT-WINDOW-1",
+            7,
+            "ACC-001",
+            Money.parse(AED, "100.00"),
+            7,
+        )
+
+        result = process_event(
+            finalization.ledger,
+            next_window_credit,
+            self.policy,
+        )
+
+        self.assertIsInstance(result.receipt, EventRejected)
+        assert isinstance(result.receipt, EventRejected)
+        self.assertIs(
+            result.receipt.code,
+            RejectionCode.POST_FINALIZATION_EVENT_UNSUPPORTED,
+        )
+        self.assertFalse(
+            any(
+                posting.direct_event_id == next_window_credit.event_id
+                for posting in postings(result.ledger)
+            )
+        )
+
     def test_finalization_reconciles_fees_across_quiet_negative_days(self) -> None:
         debit = Debit(
             "quiet-negative",
@@ -621,9 +776,7 @@ class ReplayEngineTest(unittest.TestCase):
         assert auth is not None
         self.assertIs(auth.status, AuthorizationStatus.DECLINED)
 
-    def test_unsupported_prior_day_fee_is_a_stored_rejection_not_an_exception(
-        self,
-    ) -> None:
+    def test_missing_fee_rule_is_isolated_to_the_account_that_needs_it(self) -> None:
         unsupported_negative = Debit(
             "bhd-negative-day-1",
             1,
@@ -645,13 +798,8 @@ class ReplayEngineTest(unittest.TestCase):
         second = process_event(first.ledger, next_day_unrelated, self.policy)
 
         self.assertIsInstance(first.receipt, EventAccepted)
-        self.assertIsInstance(second.receipt, EventRejected)
-        assert isinstance(second.receipt, EventRejected)
-        self.assertIs(
-            second.receipt.code,
-            RejectionCode.UNSUPPORTED_FEE_CURRENCY,
-        )
-        self.assertFalse(
+        self.assertIsInstance(second.receipt, EventAccepted)
+        self.assertTrue(
             any(
                 posting.direct_event_id == next_day_unrelated.event_id
                 for posting in postings(second.ledger)
@@ -661,6 +809,23 @@ class ReplayEngineTest(unittest.TestCase):
             event_receipt(second.ledger, next_day_unrelated.event_id),
             second.receipt,
         )
+
+        same_account_event = Credit(
+            "bhd-day-2",
+            2,
+            "ACC-002",
+            Money.parse(BHD, "1.000"),
+            2,
+        )
+        records_before = second.ledger.records
+        with self.assertRaisesRegex(
+            UnsupportedFeeCurrencyError,
+            "no overdraft fee rule exists for BHD",
+        ):
+            process_event(second.ledger, same_account_event, self.policy)
+
+        self.assertEqual(second.ledger.records, records_before)
+        self.assertIsNone(event_receipt(second.ledger, same_account_event.event_id))
 
     def test_reversal_is_narrowly_a_direct_debit_compensation(self) -> None:
         replay = replay_events(

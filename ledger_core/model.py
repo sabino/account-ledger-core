@@ -340,10 +340,10 @@ class RejectionCode(StrEnum):
     OVER_CAPTURE = "over_capture"
     REVERSAL_ALREADY_APPLIED = "reversal_already_applied"
     REVERSAL_TARGET_NOT_FOUND = "reversal_target_not_found"
-    UNSUPPORTED_FEE_CURRENCY = "unsupported_fee_currency"
     FINALIZED_PERIOD_CORRECTION_UNSUPPORTED = (
         "finalized_period_correction_unsupported"
     )
+    POST_FINALIZATION_EVENT_UNSUPPORTED = "post_finalization_event_unsupported"
 
 
 @dataclass(frozen=True, slots=True)

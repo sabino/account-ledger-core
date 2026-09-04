@@ -35,7 +35,6 @@ class AssessmentPolicyTest(unittest.TestCase):
 
     def test_authorization_at_exactly_zero_available_is_approved(self) -> None:
         decision = decide_authorization(
-            self.policy,
             ledger_balance=Money.parse(AED, "250.00"),
             active_holds=Money.parse(AED, "50.00"),
             requested=Money.parse(AED, "200.00"),
@@ -47,7 +46,6 @@ class AssessmentPolicyTest(unittest.TestCase):
 
     def test_authorization_below_zero_available_is_declined(self) -> None:
         decision = decide_authorization(
-            self.policy,
             ledger_balance=Money.parse(AED, "-230.00"),
             active_holds=Money.zero(AED),
             requested=Money.parse(AED, "90.00"),
@@ -62,14 +60,12 @@ class AssessmentPolicyTest(unittest.TestCase):
     def test_authorization_rejects_negative_holds_and_nonpositive_requests(self) -> None:
         with self.assertRaises(DomainInvariantError):
             decide_authorization(
-                self.policy,
                 ledger_balance=Money.parse(AED, "10.00"),
                 active_holds=Money.parse(AED, "-1.00"),
                 requested=Money.parse(AED, "1.00"),
             )
         with self.assertRaises(DomainInvariantError):
             decide_authorization(
-                self.policy,
                 ledger_balance=Money.parse(AED, "10.00"),
                 active_holds=Money.zero(AED),
                 requested=Money.zero(AED),
@@ -77,7 +73,6 @@ class AssessmentPolicyTest(unittest.TestCase):
 
     def test_settlement_rejects_missing_authorization(self) -> None:
         decision = decide_settlement(
-            self.policy,
             authorization=None,
             requested=Money.parse(AED, "1.00"),
         )
@@ -89,7 +84,6 @@ class AssessmentPolicyTest(unittest.TestCase):
     def test_settlement_requires_a_positive_request(self) -> None:
         with self.assertRaises(DomainInvariantError):
             decide_settlement(
-                self.policy,
                 authorization=None,
                 requested=Money.parse(AED, "-1.00"),
             )
@@ -107,7 +101,6 @@ class AssessmentPolicyTest(unittest.TestCase):
         )
 
         decision = decide_settlement(
-            self.policy,
             authorization=authorization,
             requested=Money.parse(AED, "185.00"),
         )
@@ -130,7 +123,6 @@ class AssessmentPolicyTest(unittest.TestCase):
         )
 
         decision = decide_settlement(
-            self.policy,
             authorization=authorization,
             requested=Money.parse(AED, "2.01"),
         )
@@ -187,7 +179,6 @@ class AssessmentPolicyTest(unittest.TestCase):
         )
         self.assertEqual(
             capitalization_total(
-                self.policy,
                 currency=AED,
                 rounded_daily_accruals=accruals,
             ),
@@ -202,7 +193,6 @@ class AssessmentPolicyTest(unittest.TestCase):
 
     def test_installment_split_delegates_to_exact_minor_unit_allocation(self) -> None:
         installments = split_installments(
-            self.policy,
             total=Money.parse(BHD, "10.000"),
             count=3,
         )

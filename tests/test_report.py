@@ -106,8 +106,8 @@ class ReportTest(unittest.TestCase):
     def test_rendered_report_declares_cutoffs_and_key_outcomes(self) -> None:
         rendered = render_daily_report(self.report)
 
-        self.assertIn("knowledge through commit 10", rendered)
-        self.assertIn("interest finalization commit 11", rendered)
+        self.assertIn("knowledge through commit 11", rendered)
+        self.assertIn("interest finalization commit 12", rendered)
         self.assertIn("retain their original assessment day", rendered)
         self.assertIn("Auth-B=declined(no hold)", rendered)
         self.assertIn("E6:authorization_not_found", rendered)
@@ -117,10 +117,24 @@ class ReportTest(unittest.TestCase):
     def test_processing_trace_makes_late_listed_e10_and_e7_fees_visible(self) -> None:
         rendered = render_processing_trace(self.replay)
 
-        self.assertLess(rendered.index("E9 commit=9"), rendered.index("E10 commit=10"))
-        self.assertIn("E10 commit=10 booked=D5 value=D5", rendered)
+        self.assertLess(
+            rendered.index("E9 event_commit=10"),
+            rendered.index("E10 event_commit=11"),
+        )
+        self.assertIn("E10 event_commit=11 booked=D5 value=D5", rendered)
+        self.assertIn(
+            "commit=9 posting[overdraft_fee] ACC-001 AED -25.00 value=D5",
+            rendered,
+        )
+        self.assertIn(
+            "commit=10 posting[reversal] ACC-001 AED 620.00 value=D2",
+            rendered,
+        )
         self.assertEqual(rendered.count("posting[overdraft_fee]"), 3)
-        self.assertIn("E6 commit=6 booked=D4 value=D4: rejected", rendered)
+        self.assertIn(
+            "E6 event_commit=6 booked=D4 value=D4: rejected",
+            rendered,
+        )
 
 
 if __name__ == "__main__":

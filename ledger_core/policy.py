@@ -89,7 +89,6 @@ type SettlementDecision = AcceptSettlement | RejectSettlement
 
 
 def decide_authorization(
-    policy: AssessmentPolicy,
     *,
     ledger_balance: Money,
     active_holds: Money,
@@ -97,7 +96,6 @@ def decide_authorization(
 ) -> AuthorizationDecision:
     """Approve exactly when available balance remains nonnegative."""
 
-    _ = policy
     if active_holds.minor_units < 0:
         raise DomainInvariantError("active holds cannot be negative")
     if requested.minor_units <= 0:
@@ -118,14 +116,12 @@ def decide_authorization(
 
 
 def decide_settlement(
-    policy: AssessmentPolicy,
     *,
     authorization: AuthorizationView | None,
     requested: Money,
 ) -> SettlementDecision:
     """Resolve one final capture; multi-capture and over-capture are unsupported."""
 
-    _ = policy
     if requested.minor_units <= 0:
         raise DomainInvariantError("settlement request must be positive")
     if authorization is None:
@@ -173,10 +169,7 @@ def fee_for_close(
     return policy.overdraft_fee
 
 
-def split_installments(
-    policy: AssessmentPolicy, *, total: Money, count: int
-) -> tuple[Money, ...]:
-    _ = policy
+def split_installments(*, total: Money, count: int) -> tuple[Money, ...]:
     if total.minor_units <= 0:
         raise DomainInvariantError("installment total must be positive")
     return allocate_evenly(total, count)
@@ -197,14 +190,12 @@ def daily_interest(
 
 
 def capitalization_total(
-    policy: AssessmentPolicy,
     *,
     currency: Currency,
     rounded_daily_accruals: tuple[Money, ...],
 ) -> Money:
     """Sum stored rounded accruals; never recalculate or discard a remainder."""
 
-    _ = policy
     total = Money.zero(currency)
     for accrual in rounded_daily_accruals:
         if accrual.minor_units < 0:

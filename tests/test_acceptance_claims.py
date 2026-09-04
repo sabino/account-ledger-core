@@ -112,7 +112,7 @@ class AcceptanceClaimsTest(unittest.TestCase):
             self.ledger,
             "ACC-001",
             effective_through=5,
-            known_through=9,
+            known_through=10,
         )
 
         self.assertEqual(before_e7, Money.parse(AED, "465.00"))

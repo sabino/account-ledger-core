@@ -166,7 +166,7 @@ def render_processing_trace(replay: ReplayResult) -> str:
         else:
             outcome = f"rejected[{step.receipt.code.value}]"
         lines.append(
-            f"  {event.event_id} commit={step.commit_sequence} "
+            f"  {event.event_id} event_commit={step.commit_sequence} "
             f"booked=D{event.booked_day} value=D{event.value_day}: {outcome}"
         )
         if isinstance(step.receipt, EventRejected):
@@ -184,7 +184,9 @@ def render_processing_trace(replay: ReplayResult) -> str:
                     AuthorizationSettled,
                 ),
             ):
-                lines.append(f"    {_render_effect(fact)}")
+                lines.append(
+                    f"    commit={record.commit_sequence} {_render_effect(fact)}"
+                )
     return "\n".join(lines)
 
 

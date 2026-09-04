@@ -43,6 +43,7 @@ from ledger_core.model import (
     Posting,
     PostingKind,
     RejectionCode,
+    ReversalRequested,
     SettlementRequested,
     StoredFact,
     encode_record_component,
@@ -52,7 +53,6 @@ from ledger_core.policy import (
     ApproveAuthorization,
     AssessmentPolicy,
     RejectSettlement,
-    UnsupportedFeeCurrencyError,
     capitalization_total,
     daily_interest,
     decide_authorization,
@@ -72,14 +72,16 @@ class AlreadyFinalizedError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class ProcessResult:
+    """One event result, including every fact appended during the call."""
+
     ledger: Ledger
     receipt: EventReceipt
     appended: tuple[StoredFact, ...]
 
     @property
     def commit_sequence(self) -> int:
-        if self.appended:
-            return self.appended[0].commit_sequence
+        """Return the event receipt's commit, not an earlier maintenance commit."""
+
         existing = _stored_receipt(self.ledger, self.receipt.event.event_id)
         if existing is None:
             raise RuntimeError("event receipt has no journal position")
@@ -110,10 +112,12 @@ def process_event(
 ) -> ProcessResult:
     """Process one event without mutating the supplied ledger value."""
 
+    input_ledger = ledger
     prior = _stored_receipt(ledger, event.event_id)
     if prior is not None:
         receipt = prior.fact
-        assert isinstance(receipt, (EventAccepted, EventRejected))
+        if not isinstance(receipt, (EventAccepted, EventRejected)):
+            raise RuntimeError("stored event receipt has an unsupported fact type")
         if receipt.event != event:
             raise DuplicateEventIdError(
                 f"event ID {event.event_id} was already used for different content"
@@ -121,16 +125,25 @@ def process_event(
         return ProcessResult(ledger=ledger, receipt=receipt, appended=())
 
     closed_through = finalized_through(ledger)
-    if closed_through is not None and event.value_day <= closed_through:
+    if closed_through is not None:
+        if event.value_day <= closed_through:
+            code = RejectionCode.FINALIZED_PERIOD_CORRECTION_UNSUPPORTED
+            message = (
+                f"value day {event.value_day} is inside the finalized "
+                f"interest window through day {closed_through}"
+            )
+        else:
+            code = RejectionCode.POST_FINALIZATION_EVENT_UNSUPPORTED
+            message = (
+                f"interest is already finalized through day {closed_through}; "
+                "this bounded core cannot open a later window"
+            )
         return _append_rejection(
             ledger,
             event,
             policy,
-            RejectionCode.FINALIZED_PERIOD_CORRECTION_UNSUPPORTED,
-            (
-                f"value day {event.value_day} is inside the finalized "
-                f"interest window through day {closed_through}"
-            ),
+            code,
+            message,
         )
 
     try:
@@ -157,60 +170,61 @@ def process_event(
             ),
         )
 
-    # Crossing into a later booked day closes every earlier day under the facts
-    # known so far.  This keeps ordinary same-day postings from being charged
-    # before their day has actually closed; stable fee IDs make the sweep safe
-    # to repeat.  A backdated posting is reassessed separately below.
-    try:
-        ledger = _reconcile_overdraft_fees_through(
-            ledger,
-            policy,
-            start_day=1,
-            through_day=event.booked_day - 1,
-            recorded_day=event.booked_day,
-            caused_by=f"day-close-before:{event.event_id}",
-        )
-    except UnsupportedFeeCurrencyError as error:
-        # The command cannot cross the day boundary while a prior close needs
-        # a fee for which this bounded policy has no currency rule.  Preserve
-        # the attempted input as a deterministic rejection; never let an
-        # unrelated account's unresolved close escape as a runtime exception.
-        return _append_rejection(
+    # Reconcile only the incoming account, but use the journal's latest known
+    # booked day so an out-of-order event cannot leave an earlier close undone.
+    # Another account's missing fee rule therefore cannot reject this event.
+    # Finalization still reconciles every account before capitalizing interest.
+    closed_horizon = max(event.booked_day, latest_recorded_day(ledger)) - 1
+    ledger = _reconcile_overdraft_fees_through(
+        ledger,
+        policy,
+        start_day=1,
+        through_day=closed_horizon,
+        recorded_day=event.booked_day,
+        caused_by=f"day-close-before:{event.event_id}",
+        accounts=(account,),
+    )
+
+    facts = _stage_event_facts(ledger, account, event)
+    receipt = facts[0]
+    if isinstance(receipt, EventRejected):
+        return _append_facts(
             ledger,
             event,
             policy,
-            RejectionCode.UNSUPPORTED_FEE_CURRENCY,
-            str(error),
+            facts,
+            receipt,
+            appended_from=input_ledger,
         )
-
-    facts = _stage_event_facts(ledger, account, event, policy)
-    receipt = facts[0]
-    if isinstance(receipt, EventRejected):
-        return _append_facts(ledger, event, policy, facts, receipt)
     if not isinstance(receipt, EventAccepted):
         raise RuntimeError("the first staged fact must be an event receipt")
 
     direct_postings = tuple(fact for fact in facts if isinstance(fact, Posting))
     if not direct_postings:
-        return _append_facts(ledger, event, policy, facts, receipt)
+        return _append_facts(
+            ledger,
+            event,
+            policy,
+            facts,
+            receipt,
+            appended_from=input_ledger,
+        )
 
-    try:
-        fees = _new_overdraft_fees(
-            ledger,
-            account,
-            event,
-            direct_postings,
-            policy,
-        )
-    except UnsupportedFeeCurrencyError as error:
-        return _append_rejection(
-            ledger,
-            event,
-            policy,
-            RejectionCode.UNSUPPORTED_FEE_CURRENCY,
-            str(error),
-        )
-    return _append_facts(ledger, event, policy, facts + fees, receipt)
+    fees = _new_overdraft_fees(
+        ledger,
+        account,
+        event,
+        direct_postings,
+        policy,
+    )
+    return _append_facts(
+        ledger,
+        event,
+        policy,
+        facts + fees,
+        receipt,
+        appended_from=input_ledger,
+    )
 
 
 def replay_events(
@@ -250,7 +264,8 @@ def finalize_interest(
     prior_finalization = _stored_finalization(ledger)
     if prior_finalization is not None:
         finalized = prior_finalization.fact
-        assert isinstance(finalized, InterestFinalized)
+        if not isinstance(finalized, InterestFinalized):
+            raise RuntimeError("stored finalization has an unsupported fact type")
         if (
             finalized.start_day != start_day
             or finalized.through_day != through_day
@@ -312,7 +327,6 @@ def finalize_interest(
             )
 
         capitalization = capitalization_total(
-            policy,
             currency=account.currency,
             rounded_daily_accruals=tuple(account_accruals),
         )
@@ -360,13 +374,11 @@ def _stage_event_facts(
     ledger: Ledger,
     account: Account,
     event: InputEvent,
-    policy: AssessmentPolicy,
 ) -> tuple[JournalFact, ...]:
     accepted = EventAccepted(_event_record_id(event.event_id), event)
 
     if isinstance(event, Credit):
         installments = split_installments(
-            policy,
             total=event.amount,
             count=event.installments,
         )
@@ -426,7 +438,6 @@ def _stage_event_facts(
             effective_through=event.value_day,
         )
         decision = decide_authorization(
-            policy,
             ledger_balance=balance,
             active_holds=holds,
             requested=event.amount,
@@ -485,7 +496,6 @@ def _stage_event_facts(
             else effective_authorization
         )
         decision = decide_settlement(
-            policy,
             authorization=current_authorization,
             requested=event.amount,
         )
@@ -511,6 +521,9 @@ def _stage_event_facts(
             ),
             _settlement_fact(event, decision),
         )
+
+    if not isinstance(event, ReversalRequested):
+        raise TypeError(f"unsupported input event type: {type(event).__name__}")
 
     targets = tuple(
         posting
@@ -587,7 +600,10 @@ def _new_overdraft_fees(
     latest_day = latest_recorded_day(ledger)
     if affected_from >= event.booked_day and event.booked_day >= latest_day:
         return ()
-    horizon = max(event.booked_day, latest_day)
+    # The highest booked day observed is still open. Backdated activity may
+    # reassess earlier closes, but it must not charge that open day before a
+    # later booked day arrives or explicit finalization closes it.
+    horizon = max(event.booked_day, latest_day) - 1
     return _missing_overdraft_fees(
         ledger,
         account,
@@ -607,9 +623,10 @@ def _reconcile_overdraft_fees_through(
     through_day: int,
     recorded_day: int,
     caused_by: str,
+    accounts: tuple[Account, ...] | None = None,
 ) -> Ledger:
     generated: list[Posting] = []
-    for account in ledger.accounts:
+    for account in ledger.accounts if accounts is None else accounts:
         generated.extend(
             _missing_overdraft_fees(
                 ledger,
@@ -680,9 +697,18 @@ def _append_rejection(
     policy: AssessmentPolicy,
     code: RejectionCode,
     message: str,
+    *,
+    appended_from: Ledger | None = None,
 ) -> ProcessResult:
     receipt = EventRejected(_event_record_id(event.event_id), event, code, message)
-    return _append_facts(ledger, event, policy, (receipt,), receipt)
+    return _append_facts(
+        ledger,
+        event,
+        policy,
+        (receipt,),
+        receipt,
+        appended_from=appended_from,
+    )
 
 
 def _append_facts(
@@ -691,6 +717,8 @@ def _append_facts(
     policy: AssessmentPolicy,
     facts: tuple[JournalFact, ...],
     receipt: EventReceipt,
+    *,
+    appended_from: Ledger | None = None,
 ) -> ProcessResult:
     updated = append_batch(
         ledger,
@@ -698,7 +726,8 @@ def _append_facts(
         recorded_day=event.booked_day,
         policy_version=policy.version,
     )
-    appended = updated.records[len(ledger.records) :]
+    prior = ledger if appended_from is None else appended_from
+    appended = updated.records[len(prior.records) :]
     return ProcessResult(ledger=updated, receipt=receipt, appended=appended)
 
 
