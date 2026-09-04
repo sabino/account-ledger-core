@@ -163,3 +163,9 @@ A final AI out-of-order review found one more fee-close edge: an event whose boo
 I ran the complete 80-test correctness suite successfully, received zero strict type errors or warnings, and replayed E1–E10 with the expected six-day report and exit status 0. I ran the known-limitation command separately: exactly one annotated test failed with exit status 1 for the intentionally unsupported finalized-period correction workflow.
 
 I regenerated the architecture artifact from the final source. It is exactly four A4 pages and 17,072 bytes, has `Felipe Sabino` as its author metadata and footer identity, contains four distinct official source links, and has no encryption or JavaScript. I rendered all four pages at 180 DPI and inspected them for clipping, overlap, legibility, and stale text. Source, history, filename, artifact-text, metadata, and secret-pattern checks found no stale invented identity or unintended personal material. I removed the temporary page images after inspection and left every project change uncommitted for review.
+
+## 2026-09-04 — Disclosure wording
+
+### 00:51:46 — Check · Make AI assistance explicit
+
+I replaced vague references to independent or adversarial reviewers with explicit AI review wording. This only clarifies how the existing checks were performed; no code, tests, calculations, behavior, or design decisions changed.
