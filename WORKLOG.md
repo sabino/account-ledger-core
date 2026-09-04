@@ -247,3 +247,7 @@ The optional local lake profile now sends complete journal batches from PostgreS
 The first ClickHouse startup failed because its default merge thresholds exceeded the smaller worker pool. Aligning those settings fixed startup. The upstream CDC release image also referenced a missing manifest; this experiment pins the working upstream build by digest and records that its release provenance still needs review.
 
 This remains local. SeaweedFS mini mode sizes its volume allowance from free disk space, and limiting Iceberg metadata history does not reclaim historical data files. Neither default is a safe storage budget for the shared VPS. The local notes call these out rather than treating a successful read-back as deployment readiness. Codex performed this implementation and validation with my authorization.
+
+### 20:01:00 — Check · Compare arbitrary transfers with a separate model
+
+A seeded integration test now sends 500 arbitrary transfers through alternating service connections. It includes insufficient-funds outcomes and repeats every seventh command through the other connection. After every request, it compares the account balances with a separate conservation-and-availability model; final journal reconciliation must also pass. The race-enabled test passed. The fixed seed makes failures reproducible, not exhaustive. This adds coverage beyond E1–E10 without changing the supplied fixture or claiming all ledger behaviors are covered.
