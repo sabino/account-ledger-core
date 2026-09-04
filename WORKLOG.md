@@ -201,3 +201,15 @@ All 87 correctness tests passed normally and with Python optimization enabled. T
 ### 17:36:18 — Act · Prepare the post-submission changes for main
 
 I authorized Codex to document, commit, open a pull request, and merge these fixes into `main`. Codex implemented the code, regression tests, and documentation with my authorization; these are AI-assisted changes. The README now identifies the exact submitted revision separately from subsequent work. The merge will retain the original commits rather than squash history, and the submitted architecture source and PDF will remain unchanged. The 87-test suite passed again before publication. The prior entry records the earlier uncommitted checkpoint, not the eventual publication status.
+
+## 2026-09-04 — Go service experiment
+
+### 19:07:34 — Plan · Make the follow-on service testable without risking the host
+
+I want to take the useful parts of the Python POC and exercise them as an actual service: two Go instances, PostgreSQL, a public simulator, and a separate reporting pipeline. This is follow-on work on `feat/go-ledger-service`, not a replacement for the submitted assessment or PDF. Codex is helping with the plan, implementation, and checks.
+
+The plan now separates the six-day compatibility contract from continuous simulation. It covers double-entry, concurrency, retries, outbox delivery, CDC to Iceberg, self-hosted ClickHouse, Metabase, and the tests each claim needs. Docker Compose is the local reference environment. The decision coverage document maps the original choices to planned tests and visual explanations; it does not claim those features already work.
+
+The shared VPS still has roughly 1.6 GiB of available RAM and substantial swap use. Existing services are production-critical. Builds and experiments stay local until measured resource and recovery checks justify a bounded deployment. No existing workload was stopped or reconfigured in this step.
+
+I also pushed back on the first Go scaffold: compressed code and SQL spread through methods make it harder to maintain. The direction is named SQL files with `sqlc`-generated types, explicit transaction boundaries in Go, formatting before commits, and automated checks. Docker access is working after an authorized group change. The service is not deployed yet.
