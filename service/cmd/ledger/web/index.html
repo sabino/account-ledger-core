@@ -12,6 +12,25 @@
     <script type="module" src="/app.js"></script>
   </head>
   <body>
+    <a class="skip-link" href="#overview">Skip to dashboard</a>
+    <aside class="sidebar" aria-label="Application navigation">
+      <a class="brand" href="#overview"
+        >◈ <span>LEDGER<span class="light">LAB</span></span></a
+      >
+      <p class="nav-caption">THE MONEY EXPERIMENT</p>
+      <nav>
+        <a href="#overview">◫ <span>Overview</span></a>
+        <a href="#audit">≡ <span>Journal &amp; events</span></a>
+        <a href="#accounts-view">▤ <span>Accounts</span></a>
+        <a href="#transfer-view">⇄ <span>Transfer</span></a>
+        <a href="#system-view">⌘ <span>System &amp; recovery</span></a>
+        <a href="#time-view">◷ <span>Time laboratory</span></a>
+      </nav>
+      <div class="sidebar-note">
+        <span class="live-dot"></span> Synthetic environment
+        <p>Real accounting rules.<br />No real customer money.</p>
+      </div>
+    </aside>
     <header>
       <a class="brand" href="/"
         >◈ <span>LEDGER<span class="light">LAB</span></span></a
@@ -19,10 +38,87 @@
       ><span id="connection" role="status">Connecting…</span>
     </header>
     <main>
+      <section id="overview" class="overview">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">LIVE DOUBLE-ENTRY SIMULATION</p>
+            <h1>Follow every decision.</h1>
+            <p>Money, outcomes, and the system behind them.</p>
+          </div>
+          <div class="view-controls">
+            <label for="view-currency"
+              >Currency<select id="view-currency">
+                <option value="AED">AED · 2 decimals</option>
+                <option value="BHD">BHD · 3 decimals</option>
+              </select></label
+            >
+            <label for="view-window"
+              >Event window<select id="view-window">
+                <option value="10m">Last 10 minutes</option>
+                <option value="1h" selected>Last hour</option>
+                <option value="24h">Last 24 hours</option>
+              </select></label
+            >
+            <a href="#transfer-view" class="action-link">＋ New transfer</a>
+          </div>
+        </div>
+        <p class="note" id="analytics-status" role="status">
+          Loading recorded decisions…
+        </p>
+        <div class="analytics-grid">
+          <article class="panel chart-card">
+            <div class="section-heading">
+              <h2>Recorded decisions</h2>
+              <span class="badge">JOURNAL</span>
+            </div>
+            <strong class="stat" id="event-total">—</strong>
+            <p class="note">New batches · retries excluded</p>
+            <div id="events-chart" class="chart"></div>
+          </article>
+          <article class="panel chart-card">
+            <div class="section-heading">
+              <h2>Declined &amp; rejected</h2>
+              <span class="badge">EXPECTED OUTCOMES</span>
+            </div>
+            <strong class="stat" id="event-negative">—</strong>
+            <p class="note">Business decisions · not server errors</p>
+            <div id="negative-chart" class="chart"></div>
+          </article>
+        </div>
+        <div class="analytics-grid secondary-analytics">
+          <article class="panel">
+            <h2>Decision outcomes</h2>
+            <div id="outcome-bars" class="bar-list"></div>
+            <p class="note">
+              Counts within the selected currency and event window.
+            </p>
+          </article>
+          <article class="panel">
+            <h2>Processing instances</h2>
+            <div id="instance-bars" class="bar-list"></div>
+            <p class="note">
+              Recorded processing replica, not HTTP request routing.
+            </p>
+          </article>
+          <article class="panel" id="accounts-view">
+            <div class="section-heading">
+              <h2>Customer accounts</h2>
+              <span id="account-count" class="badge">—</span>
+            </div>
+            <strong id="customer-total" class="stat">—</strong>
+            <p class="note" id="held-total">Current posted balances</p>
+            <div id="account-list" class="account-list"></div>
+            <p class="note">
+              Current snapshot, not limited by the event window. Each ledger
+              account holds one currency.
+            </p>
+          </article>
+        </div>
+      </section>
       <section class="intro">
         <div>
           <p class="eyebrow">FOLLOW THE MONEY</p>
-          <h1>One transfer.<br />Two sides. <em>One truth.</em></h1>
+          <h2>One transfer. Two sides.<br />One atomic commit.</h2>
           <p>
             Move money between fictional accounts. See which instance handles
             it, what gets recorded, and whether everything still adds up.
@@ -60,7 +156,7 @@
         </div>
       </section>
       <section class="grid">
-        <div class="panel transfer">
+        <div class="panel transfer" id="transfer-view">
           <div class="section-heading">
             <h2>Move money</h2>
             <span class="badge">ATOMIC TRANSFER</span>
@@ -93,7 +189,7 @@
           </p>
           <div id="transfer-result" role="status"></div>
         </div>
-        <div class="panel flow">
+        <div class="panel flow" id="system-view">
           <div class="section-heading">
             <h2>Inside the service</h2>
             <span class="badge">ACTUAL INSTANCE STATE</span>
@@ -112,8 +208,8 @@
           </div>
           <div class="fork-line">↓ &nbsp; durable delivery &nbsp; ↓</div>
           <div class="node">
-            Simulated inbox
-            <span>Same-database adapter in this first slice</span>
+            Notification receiver
+            <span>Signed HTTP delivery · deduplicated inbox</span>
           </div>
           <p class="note">
             Two applications, one database. This demonstrates instance
@@ -121,7 +217,7 @@
           </p>
         </div>
       </section>
-      <section class="panel">
+      <section class="panel" id="audit">
         <div class="section-heading">
           <div>
             <p class="eyebrow">THE AUDIT TRAIL</p>
@@ -166,7 +262,8 @@
         <p class="note">
           Bank-side debit/credit signs are not customer balance signs. Customer
           deposits are liabilities: a credit increases what the bank owes the
-          customer. Latest 60 batches shown.
+          customer. Currency filter applies to the latest 60 fetched batches;
+          this journal preview is not limited by the analytics time window.
         </p>
       </section>
       <section class="grid">
@@ -196,7 +293,7 @@
           <pre id="reconciliation">No check requested yet.</pre>
         </div>
       </section>
-      <section class="panel time-lab">
+      <section class="panel time-lab" id="time-view">
         <div class="section-heading">
           <div>
             <p class="eyebrow">SAME DAY. DIFFERENT KNOWLEDGE.</p>

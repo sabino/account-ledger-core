@@ -31,11 +31,27 @@ The test profile uses isolated run IDs in the local database and the restricted 
 - Sorted account locks and a short per-run journal-order lock.
 - Immutable journal rows, balanced batch checks, and matching complete batch envelopes.
 - Account picker, statements, shared rate controls, actual replica heartbeats, and reconciliation.
-- A same-database outbox/inbox adapter with a bounded delivery pause.
+- Leased outbox delivery over signed HTTP, an idempotent receiver, and append-only delivery-attempt records. A bounded pause lets the backlog accumulate and recover.
 - A separate host watcher with a restricted database role. Missing or stale telemetry blocks new simulation commands, rate increases, and chaos; stopping generation remains available.
 - The isolated six-day fixture, including historical fees, linked principal reversal, installment allocation, daily interest, and final capitalization. A knowledge-cutoff slider shows how later records change historical projections.
 
-Continuous virtual-day transitions, external reconciliation, a network delivery sink, reporting integration, Metabase, backup recovery, and deployment gates are still being worked on. Fixture tests are not evidence for these missing features or general equivalence with every Python input.
+Continuous virtual-day transitions, external reconciliation, Metabase, and deployment gates are still being worked on. The optional local lake profile and a small paused-writer backup/restore drill have separate checks; they are not proof of full production reporting or disaster recovery. Fixture tests are not evidence for missing features or general equivalence with every Python input.
+
+## Event analytics and currency views
+
+The dashboard separates recorded decisions from operational state. Its two time-series charts show new journal batches and declined/rejected decisions over 10 minutes, one hour, or 24 hours, in 60 equal buckets. Counts come from one PostgreSQL query snapshot. Empty buckets mean no recorded batch, not proof that the service was healthy. Matching retries do not append another decision; these are not HTTP request, latency, or error-rate metrics. Outcome and processing-instance breakdowns use the same window and currency. Exact bucket counts are expandable below each chart.
+
+Currency attribution uses the recorded command, with a posting-currency fallback for older records. An older decision with neither is excluded from currency-specific analytics rather than guessed. The endpoint permits only AED/BHD (or an all-currency count view), three fixed windows, and a two-second query timeout. It aggregates events once before joining the 60 buckets. The browser refreshes analytics every ten seconds and labels failures as stale; current operational snapshots refresh more frequently.
+
+Each current ledger account is single-currency. A customer-facing multi-currency wallet could group separate AED and BHD accounts, but that grouping is not implemented here. The selector changes account choices, current customer totals, and the journal preview; it never converts or combines currencies. Current balances and operational counters are not limited by the event window. The journal preview filters the latest 60 fetched batches, so it is not a complete filtered event search. The six-day laboratory remains an explicitly separate, two-currency fixture.
+
+The dark layout uses responsive navigation, stacked panels at narrower widths, and horizontally scrollable journal tables. It contains no crypto panels, invented trends, or third-party branding. Compilation and HTTP checks are separate from visual/responsive browser QA; that visual QA is still pending.
+
+## Notification delivery boundary
+
+The worker commits a 15-second delivery lease before making an HTTP call. Only its lease token can acknowledge that attempt. The receiver checks an HMAC signature and the complete payload against the recorded journal batch before inserting a unique inbox receipt. A lost acknowledgement is safe to retry. Claims, retries, and acknowledgements are append-only audit rows; the operational outbox lease is mutable.
+
+The local reverse proxy denies `/internal/`, and destinations are fixed configuration, not public input. Local credentials are examples only. Delivery uses HTTP inside the local network, not encryption, and the simulated receiver still shares PostgreSQL with the ledger. This tests a network boundary and acknowledgement loss, not an independent downstream database, host failure, or exactly-once network delivery. The integration test simulates losing the acknowledgement after the receiver commits, then verifies one receipt after retry.
 
 The Go fixture retains the supplied numbers, not the Python journal positions. Each balanced batch includes its counterpart postings. Prior-day maintenance and the triggering event are separate batches inside one database transaction, so readers cannot observe the intermediate maintenance batch before that transaction commits.
 

@@ -51,6 +51,135 @@ let selectedEvent: JournalRow | undefined;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 let accounts: Account[] = [];
+const viewCurrency = () => $<HTMLSelectElement>("view-currency").value;
+type Bucket = {
+  at: string;
+  total: number;
+  accepted: number;
+  declined: number;
+  rejected: number;
+};
+type Analytics = {
+  since: string;
+  through: string;
+  currency: string;
+  bucket_seconds: number;
+  buckets: Bucket[];
+  instances: { instance: string; total: number }[];
+};
+let analyticsRequest = 0;
+let analyticsUpdated = 0;
+
+// Counts only: monetary calculations stay in integer minor units below.
+function chart(
+  id: string,
+  rows: Bucket[],
+  value: (row: Bucket) => number,
+  data: Analytics,
+) {
+  const values = rows.map(value);
+  const maximum = Math.max(1, ...values);
+  const points = values
+    .map(
+      (v, i) =>
+        `${40 + (i * 510) / Math.max(1, values.length - 1)},${145 - (v / maximum) * 125}`,
+    )
+    .join(" ");
+  const label = `${values.reduce((a, b) => a + b, 0)} decisions in ${data.bucket_seconds}-second buckets`;
+  const target = $(id);
+  target.innerHTML = `<svg viewBox="0 0 560 165" role="img" aria-label="${esc(label)}"><title>${esc(label)}</title><path class="chart-grid" d="M40 20H550 M40 82.5H550 M40 145H550"/><text x="0" y="24">${maximum}</text><text x="20" y="149">0</text><polygon class="chart-fill" points="40,145 ${points} 550,145"/><polyline class="chart-line" points="${points}"/></svg><div class="chart-footer"><span>${esc(new Date(data.since).toLocaleTimeString())}</span><span>${data.bucket_seconds}s / bucket</span><span>${esc(new Date(data.through).toLocaleTimeString())}</span></div>`;
+  const details = document.createElement("details");
+  const summary = document.createElement("summary");
+  summary.textContent = "View exact counts";
+  const table = document.createElement("table");
+  table.innerHTML =
+    "<thead><tr><th>Bucket start (local time)</th><th>Decisions</th></tr></thead>";
+  const body = document.createElement("tbody");
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    for (const text of [
+      new Date(row.at).toLocaleString(),
+      String(value(row)),
+    ]) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      tr.append(td);
+    }
+    body.append(tr);
+  });
+  table.append(body);
+  details.append(summary, table);
+  target.append(details);
+}
+function bars(id: string, rows: { label: string; value: number }[]) {
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  $(id).innerHTML =
+    rows
+      .map(
+        (row) =>
+          `<div><div class="bar-label"><span>${esc(row.label)}</span><strong>${row.value.toLocaleString()}</strong></div><div class="bar-track"><span style="width:${total ? (100 * row.value) / total : 0}%"></span></div></div>`,
+      )
+      .join("") || '<p class="note">No recorded decisions in this window.</p>';
+}
+async function analytics() {
+  const request = ++analyticsRequest;
+  $("analytics-status").textContent = "Updating event analytics…";
+  try {
+    const data: Analytics = await api(
+      `analytics?currency=${encodeURIComponent(viewCurrency())}&window=${encodeURIComponent($<HTMLSelectElement>("view-window").value)}`,
+    );
+    if (request !== analyticsRequest) return;
+    const total = data.buckets.reduce((sum, b) => sum + b.total, 0);
+    const negative = data.buckets.reduce(
+      (sum, b) => sum + b.declined + b.rejected,
+      0,
+    );
+    $("event-total").textContent = total.toLocaleString();
+    $("event-negative").textContent = negative.toLocaleString();
+    chart("events-chart", data.buckets, (b) => b.total, data);
+    chart("negative-chart", data.buckets, (b) => b.declined + b.rejected, data);
+    bars(
+      "outcome-bars",
+      ["accepted", "declined", "rejected"].map((status) => ({
+        label: status,
+        value: data.buckets.reduce(
+          (sum, b) => sum + b[status as "accepted" | "declined" | "rejected"],
+          0,
+        ),
+      })),
+    );
+    bars(
+      "instance-bars",
+      data.instances.map((r) => ({ label: r.instance, value: r.total })),
+    );
+    $("analytics-status").textContent =
+      `${data.currency} · ${new Date(data.since).toLocaleString()} → ${new Date(data.through).toLocaleString()} · PostgreSQL journal · refreshes every 10 seconds${total === 0 ? " · No decisions recorded in this window." : ""}`;
+    analyticsUpdated = Date.now();
+  } catch (error) {
+    if (request !== analyticsRequest) return;
+    $("analytics-status").textContent =
+      `Analytics unavailable; previous chart, if present, is stale. ${(error as Error).message}`;
+  }
+}
+function accountSummary() {
+  const currency = viewCurrency();
+  const selected = accounts.filter(
+    (a) => a.customer && a.currency === currency,
+  );
+  $("account-count").textContent = `${selected.length} · ${currency}`;
+  $("customer-total").textContent = money(
+    selected.reduce((sum, a) => sum + BigInt(a.balance_minor), 0n).toString(),
+    currency,
+  );
+  $("held-total").textContent =
+    `Posted · ${money(selected.reduce((sum, a) => sum + BigInt(a.held_minor), 0n).toString(), currency)} reserved`;
+  $("account-list").innerHTML = selected
+    .map(
+      (a) =>
+        `<div class="account-row"><button data-account="${esc(a.id)}">${esc(a.name)}<small>${esc(a.id)}</small></button><span>${money(a.balance_minor, currency)}</span></div>`,
+    )
+    .join("");
+}
 const money = (minor: string, currency: string) => {
   const p = currency === "BHD" ? 3 : 2;
   let n = BigInt(minor);
@@ -92,19 +221,21 @@ function choices() {
   const source = $<HTMLSelectElement>("source");
   const previous = source.value;
   source.innerHTML = accounts
-    .filter((a) => a.customer)
+    .filter((a) => a.customer && a.currency === viewCurrency())
     .map(
       (a) =>
         `<option value="${esc(a.id)}">${esc(a.name)} / ${a.id} / ${a.currency}</option>`,
     )
     .join("");
-  if (previous) source.value = previous;
+  if (Array.from(source.options).some((o) => o.value === previous))
+    source.value = previous;
   destinations();
   const statement = $<HTMLSelectElement>("statement"),
     v = statement.value;
   statement.innerHTML =
     '<option value="">All accounts</option>' +
     accounts
+      .filter((a) => a.currency === viewCurrency())
       .map((a) => `<option value="${a.id}">${esc(a.name)} / ${a.id}</option>`)
       .join("");
   statement.value = v;
@@ -129,27 +260,36 @@ function destinations() {
     `${money(source.balance_minor, source.currency)} posted · ${money((BigInt(source.balance_minor) - BigInt(source.held_minor)).toString(), source.currency)} available`;
 }
 async function journal() {
+  const selectedCurrency = viewCurrency();
   const rows = await api(
     "journal?account=" +
       encodeURIComponent($<HTMLSelectElement>("statement").value),
   );
-  journalRows = rows;
-  $("journal").innerHTML = rows
-    .map((row: any) => {
-      const r: Outcome = row.result;
-      const legs = (positive: boolean) =>
-        r.legs
-          .filter((l) =>
-            positive ? BigInt(l.units) > 0n : BigInt(l.units) < 0n,
-          )
-          .map(
-            (l) =>
-              `${esc(l.account)}<small>${money((BigInt(l.units) < 0n ? -BigInt(l.units) : BigInt(l.units)).toString(), l.currency)}</small>`,
-          )
-          .join("<br>") || "—";
-      return `<tr class="${selectedEvent?.result.sequence === r.sequence ? "selected-event" : ""}"><td><button class="inspect-event" data-sequence="${esc(r.sequence)}" aria-label="Inspect ${esc(r.id)}" aria-pressed="${selectedEvent?.result.sequence === r.sequence}">#${r.sequence}</button><small>${new Date(row.at).toLocaleTimeString()}</small></td><td>${esc(r.kind)}<small>${esc(r.id)}</small></td><td class="${esc(r.status)}">${esc(r.status)}<small>${esc(r.reason || "")}</small></td><td>${legs(true)}</td><td>${legs(false)}</td><td>${esc(r.instance)}</td></tr>`;
-    })
-    .join("");
+  if (selectedCurrency !== viewCurrency()) return;
+  journalRows = rows.filter(
+    (row: JournalRow) =>
+      row.result.command?.currency === selectedCurrency ||
+      (!row.result.command?.currency &&
+        row.result.legs.some((leg) => leg.currency === selectedCurrency)),
+  );
+  $("journal").innerHTML =
+    journalRows
+      .map((row: any) => {
+        const r: Outcome = row.result;
+        const legs = (positive: boolean) =>
+          r.legs
+            .filter((l) =>
+              positive ? BigInt(l.units) > 0n : BigInt(l.units) < 0n,
+            )
+            .map(
+              (l) =>
+                `${esc(l.account)}<small>${money((BigInt(l.units) < 0n ? -BigInt(l.units) : BigInt(l.units)).toString(), l.currency)}</small>`,
+            )
+            .join("<br>") || "—";
+        return `<tr class="${selectedEvent?.result.sequence === r.sequence ? "selected-event" : ""}"><td><button class="inspect-event" data-sequence="${esc(r.sequence)}" aria-label="Inspect ${esc(r.id)}" aria-pressed="${selectedEvent?.result.sequence === r.sequence}">#${r.sequence}</button><small>${new Date(row.at).toLocaleTimeString()}</small></td><td>${esc(r.kind)}<small>${esc(r.id)}</small></td><td class="${esc(r.status)}">${esc(r.status)}<small>${esc(r.reason || "")}</small></td><td>${legs(true)}</td><td>${legs(false)}</td><td>${esc(r.instance)}</td></tr>`;
+      })
+      .join("") ||
+    '<tr><td colspan="6">No matching decisions in this latest-batch preview.</td></tr>';
 }
 function inspectEvent(row: JournalRow) {
   selectedEvent = row;
@@ -273,6 +413,7 @@ async function refresh() {
   try {
     const [status, list] = await Promise.all([api("status"), api("accounts")]);
     accounts = list;
+    accountSummary();
     if (!$<HTMLSelectElement>("source").options.length) choices();
     else destinations();
     $("connection").textContent = "● Connected · " + status.serving_instance;
@@ -296,12 +437,34 @@ async function refresh() {
       )
       .join("");
     await journal();
+    if (Date.now() - analyticsUpdated > 10000) await analytics();
   } catch (e) {
     $("connection").textContent = "○ Connection unavailable";
     console.error(e);
   }
 }
 $("source").addEventListener("change", destinations);
+$("view-currency").addEventListener("change", () => {
+  selectedEvent = undefined;
+  $("event-inspector").textContent =
+    "Select a batch number to inspect its decision and entries.";
+  choices();
+  accountSummary();
+  void analytics();
+  journal().catch((e) => toast(e.message));
+});
+$("view-window").addEventListener("change", () => {
+  void analytics();
+});
+$("account-list").addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-account]",
+  );
+  if (!button) return;
+  $<HTMLSelectElement>("statement").value = button.dataset.account!;
+  $("audit").scrollIntoView();
+  journal().catch((e) => toast(e.message));
+});
 $("statement").addEventListener("change", () =>
   journal().catch((e) => toast(e.message)),
 );
