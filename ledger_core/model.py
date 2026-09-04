@@ -331,6 +331,7 @@ class AuthorizationStatus(StrEnum):
 
 
 class RejectionCode(StrEnum):
+    AUTHORIZATION_DATE_UNSUPPORTED = "authorization_date_unsupported"
     ACCOUNT_NOT_FOUND = "account_not_found"
     AUTHORIZATION_ACCOUNT_MISMATCH = "authorization_account_mismatch"
     AUTHORIZATION_ALREADY_EXISTS = "authorization_already_exists"

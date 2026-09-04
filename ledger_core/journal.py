@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, TypeGuard
 
+from ledger_core.policy import AssessmentPolicy
+
 from ledger_core.model import (
     Account,
     AccountId,
@@ -96,6 +98,7 @@ class Ledger:
     accounts: tuple[Account, ...]
     records: tuple[StoredFact, ...] = ()
     next_commit_sequence: int = 1
+    policy_configurations: tuple[AssessmentPolicy, ...] = ()
 
     def __post_init__(self) -> None:
         account_ids = tuple(account.account_id for account in self.accounts)
@@ -222,6 +225,7 @@ def append_batch(
         accounts=ledger.accounts,
         records=ledger.records + appended,
         next_commit_sequence=commit_sequence + 1,
+        policy_configurations=ledger.policy_configurations,
     )
 
 

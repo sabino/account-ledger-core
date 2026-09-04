@@ -5,12 +5,14 @@ import unittest
 from ledger_core.engine import (
     AlreadyFinalizedError,
     DuplicateEventIdError,
+    PolicyVersionConflictError,
     finalize_interest,
     process_event,
     replay_events,
 )
 from ledger_core.journal import (
     authorization_view,
+    active_hold_total,
     closing_balance,
     event_receipt,
     fee_postings,
@@ -33,7 +35,7 @@ from ledger_core.model import (
     ReversalRequested,
     SettlementRequested,
 )
-from ledger_core.policy import AssessmentPolicy, UnsupportedFeeCurrencyError
+from ledger_core.policy import AssessmentPolicy, Ratio, UnsupportedFeeCurrencyError
 from ledger_core.scenario import assessment_events, empty_assessment_ledger
 
 
@@ -190,6 +192,57 @@ class ReplayEngineTest(unittest.TestCase):
             "Auth-late-day-five",
             effective_through=5,
         )
+        self.assertIsNone(view)
+        self.assertIsInstance(authorization.receipt, EventRejected)
+        assert isinstance(authorization.receipt, EventRejected)
+        self.assertIs(
+            authorization.receipt.code, RejectionCode.AUTHORIZATION_DATE_UNSUPPORTED
+        )
+
+    def test_dated_authorization_cannot_hide_an_existing_hold(self) -> None:
+        ledger = replay_events(
+            empty_assessment_ledger(),
+            (
+                Credit("fund", 1, "ACC-001", Money(AED, 10_000), 1),
+                AuthorizationRequested(
+                    "first", 2, "ACC-001", "first", Money(AED, 8_000), 2
+                ),
+            ),
+            self.policy,
+        ).ledger
+        for booked_day, value_day in ((3, 1), (1, 1), (3, 4)):
+            with self.subTest(booked_day=booked_day, value_day=value_day):
+                result = process_event(
+                    ledger,
+                    AuthorizationRequested(
+                        "second", booked_day, "ACC-001", "second",
+                        Money(AED, 8_000), value_day,
+                    ),
+                    self.policy,
+                )
+                self.assertIsInstance(result.receipt, EventRejected)
+                assert isinstance(result.receipt, EventRejected)
+                self.assertIs(
+                    result.receipt.code, RejectionCode.AUTHORIZATION_DATE_UNSUPPORTED
+                )
+                self.assertEqual(
+                    active_hold_total(result.ledger, "ACC-001", effective_through=4),
+                    Money(AED, 8_000),
+                )
+                self.assertEqual(
+                    closing_balance(result.ledger, "ACC-001", effective_through=4),
+                    Money(AED, 10_000),
+                )
+                self.assertEqual(len(result.appended), 1)
+
+        ordinary = process_event(
+            ledger,
+            AuthorizationRequested(
+                "ordinary", 3, "ACC-001", "ordinary", Money(AED, 8_000), 3
+            ),
+            self.policy,
+        )
+        view = authorization_view(ordinary.ledger, "ordinary", effective_through=3)
         self.assertIsNotNone(view)
         assert view is not None
         self.assertIs(view.status, AuthorizationStatus.DECLINED)
@@ -582,6 +635,47 @@ class ReplayEngineTest(unittest.TestCase):
                 start_day=2,
                 through_day=6,
             )
+
+    def test_policy_label_cannot_change_rules_during_events_or_finalization(self) -> None:
+        ledger = replay_events(
+            empty_assessment_ledger(), assessment_events(), self.policy
+        ).ledger
+        finalized = finalize_interest(ledger, self.policy, start_day=1, through_day=6)
+        for changed in (
+            AssessmentPolicy(daily_interest_rate=Ratio(1, 1000)),
+            AssessmentPolicy(overdraft_fee=Money(AED, 1250)),
+        ):
+            with self.subTest(policy=changed):
+                for prior in (ledger, finalized.ledger):
+                    with self.assertRaises(PolicyVersionConflictError):
+                        finalize_interest(prior, changed, start_day=1, through_day=6)
+                with self.assertRaises(PolicyVersionConflictError):
+                    process_event(
+                        ledger, Credit("new", 6, "ACC-001", Money(AED, 100), 6), changed
+                    )
+                self.assertIsNone(event_receipt(ledger, "new"))
+
+        retry = finalize_interest(
+            finalized.ledger, AssessmentPolicy(), start_day=1, through_day=6
+        )
+        self.assertIs(retry.ledger, finalized.ledger)
+        self.assertEqual(retry.capitalizations, finalized.capitalizations)
+
+    def test_policy_binding_is_local_and_preserved_across_appends(self) -> None:
+        original = empty_assessment_ledger()
+        first = process_event(
+            original, Credit("one", 1, "ACC-001", Money(AED, 100), 1), self.policy
+        )
+        second = process_event(
+            first.ledger, Credit("two", 1, "ACC-001", Money(AED, 100), 1), self.policy
+        )
+        self.assertEqual(original.policy_configurations, ())
+        self.assertEqual(second.ledger.policy_configurations, (self.policy,))
+        changed = AssessmentPolicy(daily_interest_rate=Ratio(1, 1000))
+        independent = process_event(
+            original, Credit("other", 1, "ACC-001", Money(AED, 100), 1), changed
+        )
+        self.assertEqual(independent.ledger.policy_configurations, (changed,))
 
     def test_post_finalization_backdate_is_an_explicit_bounded_core_rejection(self) -> None:
         replay = replay_events(

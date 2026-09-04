@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable
 
 from ledger_core.journal import (
@@ -70,6 +70,25 @@ class AlreadyFinalizedError(ValueError):
     """Raised when a different interest finalization is attempted."""
 
 
+class PolicyVersionConflictError(ValueError):
+    """A previously used policy label was supplied with different rules."""
+
+
+def _bind_policy(ledger: Ledger, policy: AssessmentPolicy) -> Ledger:
+    """Keep exact, immutable configuration evidence within this ledger value."""
+
+    for existing in ledger.policy_configurations:
+        if existing.version == policy.version:
+            if existing != policy:
+                raise PolicyVersionConflictError(
+                    f"policy version {policy.version!r} already identifies different rules"
+                )
+            return ledger
+    return replace(
+        ledger, policy_configurations=(*ledger.policy_configurations, policy)
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ProcessResult:
     """One event result, including every fact appended during the call."""
@@ -112,6 +131,7 @@ def process_event(
 ) -> ProcessResult:
     """Process one event without mutating the supplied ledger value."""
 
+    ledger = _bind_policy(ledger, policy)
     input_ledger = ledger
     prior = _stored_receipt(ledger, event.event_id)
     if prior is not None:
@@ -261,6 +281,7 @@ def finalize_interest(
     if start_day <= 0 or through_day < start_day:
         raise ValueError("interest window must be a non-empty positive day range")
 
+    ledger = _bind_policy(ledger, policy)
     prior_finalization = _stored_finalization(ledger)
     if prior_finalization is not None:
         finalized = prior_finalization.fact
@@ -418,6 +439,21 @@ def _stage_event_facts(
         )
 
     if isinstance(event, AuthorizationRequested):
+        # A historical balance is useful for reporting, but cannot authorize
+        # a new reservation while ignoring holds already active now.
+        if (
+            event.value_day != event.booked_day
+            or event.booked_day < latest_recorded_day(ledger)
+        ):
+            return (
+                EventRejected(
+                    _event_record_id(event.event_id),
+                    event,
+                    RejectionCode.AUTHORIZATION_DATE_UNSUPPORTED,
+                    "authorization must use the current booked day as its value day; "
+                    "historical and future-dated reservations are unsupported",
+                ),
+            )
         if _authorization_exists(ledger, event.authorization_id):
             return (
                 EventRejected(

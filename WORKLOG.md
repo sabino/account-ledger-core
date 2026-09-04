@@ -187,3 +187,17 @@ I ran all 84 correctness tests normally and with Python optimization enabled, re
 A final rubric audit found a few answers that were present only by implication. I made the first 100x limit, the unbounded journal and replay state, and the cheapest structural change explicit. I also stated the decline scenario and action in text, and expanded the scope cuts to include the AED-only fee rule, direct-debit-principal reversal, and the limits of a caller-supplied policy label. I clarified that linked replacement of an issued result is a production requirement, that this customer subledger could sit behind a balanced general-ledger boundary, and that journal sequence orders committed batches.
 
 The first rebuild showed that fixed section breaks wasted space on the opening pages and crowded the final page. I removed those breaks and kept one deliberate split between the conceptual double-entry diagram and its guarantees. The final artifact remains four A4 pages, now 17,465 bytes, with all five source links, consistent footers, and no clipped or overlapping content at 180 DPI. All 84 tests passed normally and with Python optimization enabled, and the complete replay still exited successfully. No runtime behavior changed in this pass.
+
+## 2026-09-04 — Post-submission branch
+
+### 17:35:00 — Check · Bound authorization dates and policy identity
+
+After submission, an AI-assisted review reproduced a new authorization gap: an AED 100 balance could support two AED 80 holds when the second request carried a value day before the first hold. Its historical availability check omitted the already-active hold. On `codex/post-submission-hardening`, I limited new authorization requests to the current booked day, with matching value day, and added regression coverage for historical and future dates. A previously tested late authorization now receives a date rejection rather than a business decline; prior-day fee maintenance remains visible.
+
+The same review confirmed that a different interest rate could reuse the original policy label and silently receive the original finalization result. The engine now retains exact immutable policy configurations in each ledger value and rejects conflicting reuse during event processing or finalization. This avoids hashing and global mutable state; it does not implement effective-dated production policy management.
+
+All 87 correctness tests passed normally and with Python optimization enabled. The supplied replay retains its fee timing, commit numbers, balances, and capitalization totals. These changes are subsequent to submitted commit `5a15146`; the architecture source and submitted PDF are unchanged. The branch work is left uncommitted for review.
+
+### 17:36:18 — Act · Prepare the post-submission changes for main
+
+I authorized Codex to document, commit, open a pull request, and merge these fixes into `main`. Codex implemented the code, regression tests, and documentation with my authorization; these are AI-assisted changes. The README now identifies the exact submitted revision separately from subsequent work. The merge will retain the original commits rather than squash history, and the submitted architecture source and PDF will remain unchanged. The 87-test suite passed again before publication. The prior entry records the earlier uncommitted checkpoint, not the eventual publication status.
