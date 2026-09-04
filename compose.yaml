@@ -19,6 +19,71 @@ x-app: &app
     timeout: 3s
     retries: 5
 services:
+  lake:
+    image: chrislusf/seaweedfs:4.45@sha256:fc9f76fa993ad69966ffeb2f65d0318fcae39c6f8e20cf68ef7b3a5cb97769e5
+    profiles: [lake]
+    command: [mini, -dir=/data, -ip=lake, -ip.bind=0.0.0.0, -s3.config=/config/s3.json, -tableBucket=ledger-lake, -admin.ui=false, -webdav=false, -s3.port.lance=0, -master.volumeSizeLimitMB=64]
+    volumes: ["lake-data:/data", "./deploy/local/lake/s3.json:/config/s3.json:ro"]
+    mem_limit: 384m
+    memswap_limit: 384m
+    cpus: 0.25
+    pids_limit: 64
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: 5m, max-file: "2"}}
+    healthcheck:
+      test: [CMD-SHELL, "wget -q -O /dev/null http://127.0.0.1:8333/status"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  cdc-setup:
+    image: postgres:18.3-bookworm@sha256:80630f83606d8db77d30b3851b16a9f78be2d0d4dda6f7b82a1fdca5ebe3acba
+    profiles: [lake]
+    environment: {PGPASSWORD: local-owner-only}
+    volumes: ["./deploy/local/lake/cdc.sql:/bootstrap.sql:ro"]
+    command: [psql, -v, ON_ERROR_STOP=1, -h, postgres, -U, ledger_owner, -d, ledger, -f, /bootstrap.sql]
+    depends_on: {migrate: {condition: service_completed_successfully}}
+    mem_limit: 64m
+    cpus: 0.1
+    restart: "no"
+  cdc:
+    # The upstream release index referenced a missing manifest; this inspected
+    # upstream build is pinned by digest, never followed through a mutable tag.
+    image: ghcr.io/memiiso/debezium-server-iceberg@sha256:c49ebdaae01762a5509804926710d6a831e45d56f70ce98cf69bac57cc6a6bf9
+    profiles: [lake]
+    environment:
+      JAVA_OPTS: "-Xms64m -Xmx384m -XX:MaxDirectMemorySize=96m -XX:ActiveProcessorCount=2"
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ledger-local
+      AWS_SECRET_ACCESS_KEY: local-lake-only
+    volumes: ["./deploy/local/lake/application.properties:/debezium/config/application.properties:ro", "cdc-data:/debezium/data"]
+    depends_on: {cdc-setup: {condition: service_completed_successfully}, lake: {condition: service_healthy}}
+    mem_limit: 768m
+    memswap_limit: 768m
+    cpus: 0.5
+    pids_limit: 160
+    restart: "on-failure:3"
+    logging: {driver: json-file, options: {max-size: 5m, max-file: "2"}}
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8@sha256:0152dd511befe6a2c2ef53e930726179669b08116da78500b37c51c96ff5ee77
+    profiles: [lake]
+    environment: {CLICKHOUSE_USER: ledger_owner, CLICKHOUSE_PASSWORD: local-analytics-only, CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"}
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./deploy/local/lake/clickhouse.xml:/etc/clickhouse-server/config.d/ledger.xml:ro
+      - ./deploy/local/lake/clickhouse-users.xml:/etc/clickhouse-server/users.d/ledger.xml:ro
+      - ./deploy/local/lake/catalog.sql:/docker-entrypoint-initdb.d/01-catalog.sql:ro
+    depends_on: {lake: {condition: service_healthy}}
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: 0.75
+    pids_limit: 180
+    restart: "on-failure:3"
+    logging: {driver: json-file, options: {max-size: 5m, max-file: "2"}}
+    healthcheck:
+      test: [CMD-SHELL, "clickhouse-client --user ledger_owner --password local-analytics-only --query 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
   test-runner:
     image: golang:1.27.1-bookworm@sha256:648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b
     profiles: [test]
@@ -73,3 +138,6 @@ services:
     logging: {driver: json-file, options: {max-size: 5m, max-file: "2"}}
 volumes:
   pgdata:
+  lake-data:
+  cdc-data:
+  clickhouse-data:

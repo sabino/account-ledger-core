@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "local-ledger-lake",
+      "credentials": [{"accessKey": "ledger-local", "secretKey": "local-lake-only"}],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

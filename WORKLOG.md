@@ -239,3 +239,11 @@ The Go service now replays the supplied six-day example in an isolated run, with
 Go batch numbers are different from Python commit numbers. Prior-day maintenance and its triggering event are separate journal batches within one database transaction. A prefix query can inspect the boundary between them, but a live reader never saw that intermediate state before commit. The documentation now states this distinction.
 
 I also replaced startup schema execution with numbered Goose migrations and a database migration lock. Queries remain named SQL with generated Go types. Go formatting, vet, race-enabled unit and database integration tests, frontend formatting, and the TypeScript build passed locally. Codex implemented and checked this step with my authorization. The submitted Python code and PDF remain unchanged; no production service was touched.
+
+### 19:59:45 — Check · Read the fixture through the reporting pipeline
+
+The optional local lake profile now sends complete journal batches from PostgreSQL through Debezium into Iceberg, using SeaweedFS for object storage and its REST catalog. Self-hosted ClickHouse read all 12 unique fixture batches and reconstructed the expected customer balances and counterpart totals. A graceful CDC restart resumed ingestion. Crash-window duplicates, lost-slot recovery, and sustained load are not tested yet.
+
+The first ClickHouse startup failed because its default merge thresholds exceeded the smaller worker pool. Aligning those settings fixed startup. The upstream CDC release image also referenced a missing manifest; this experiment pins the working upstream build by digest and records that its release provenance still needs review.
+
+This remains local. SeaweedFS mini mode sizes its volume allowance from free disk space, and limiting Iceberg metadata history does not reclaim historical data files. Neither default is a safe storage budget for the shared VPS. The local notes call these out rather than treating a successful read-back as deployment readiness. Codex performed this implementation and validation with my authorization.
