@@ -53,9 +53,12 @@ func (s *Store) Process(ctx context.Context, runID string, command Command) (Res
 		return result, err
 	}
 	result := Result{ID: command.ID, Status: "accepted", Instance: s.Instance, Kind: command.Kind, Legs: []Leg{}}
-	amount, err := domain.Parse(command.Amount, command.Currency)
-	if err != nil {
-		result.reject(err.Error())
+	var amount int64
+	if command.Kind != "reversal" {
+		amount, err = domain.Parse(command.Amount, command.Currency)
+		if err != nil {
+			result.reject(err.Error())
+		}
 	}
 	if command.BookedDay < 1 || command.ValueDay < 1 {
 		result.reject("dates must be positive")
@@ -66,14 +69,35 @@ func (s *Store) Process(ctx context.Context, runID string, command Command) (Res
 	if run.Profile == "live" && (command.BookedDay != run.Day || command.ValueDay != run.Day) {
 		result.reject("live commands use the current simulation day")
 	}
-	accounts, err := lockAccounts(ctx, queries, runID, command, &result)
+	accounts, err := lockAccounts(ctx, queries, runID, command, run.Profile, &result)
 	if err != nil {
 		return Result{}, err
 	}
 	if result.Status == "accepted" {
+		if run.Profile == "fixture" {
+			if err = s.closeBeforeEvent(ctx, queries, run, command, accounts); err != nil {
+				return Result{}, err
+			}
+		}
 		if err = decide(ctx, queries, runID, command, amount, accounts, &result); err != nil {
 			return Result{}, err
 		}
+	}
+	if result.Status == "accepted" && run.Profile == "fixture" && len(result.Legs) > 0 {
+		policy, policyErr := domain.ParsePolicy(run.Policy)
+		if policyErr != nil {
+			return Result{}, policyErr
+		}
+		latest, lookupErr := queries.LatestBookedDay(ctx, runID)
+		if lookupErr != nil {
+			return Result{}, lookupErr
+		}
+		fees, feeErr := missingFees(ctx, queries, runID, accounts[command.Account], command.ValueDay,
+			max(command.BookedDay, latest)-1, result.Legs, policy)
+		if feeErr != nil {
+			return Result{}, feeErr
+		}
+		result.Legs = append(result.Legs, fees...)
 	}
 	if err = applyBalances(ctx, queries, runID, accounts, result); err != nil {
 		return Result{}, err
@@ -87,16 +111,19 @@ func (s *Store) Process(ctx context.Context, runID string, command Command) (Res
 	return result, nil
 }
 
-func lockAccounts(ctx context.Context, queries *db.Queries, runID string, command Command, result *Result) (map[string]*db.Account, error) {
+func lockAccounts(ctx context.Context, queries *db.Queries, runID string, command Command, profile string, result *Result) (map[string]*db.Account, error) {
 	ids := []string{command.Account}
 	switch command.Kind {
 	case "transfer":
 		ids = append(ids, command.Destination)
-	case "credit", "debit", "capture":
+	case "credit", "debit", "capture", "reversal":
 		ids = append(ids, "settlement-"+command.Currency)
 	case "hold":
 	default:
 		result.reject("unsupported command kind")
+	}
+	if profile == "fixture" && command.Currency == "AED" {
+		ids = append(ids, "fees-AED")
 	}
 	sort.Strings(ids)
 	ids = slices.Compact(ids)
@@ -131,7 +158,22 @@ func decide(ctx context.Context, queries *db.Queries, runID string, command Comm
 	source := accounts[command.Account]
 	switch command.Kind {
 	case "credit":
-		result.Legs = []Leg{{"settlement-" + command.Currency, command.Currency, amount}, {command.Account, command.Currency, -amount}}
+		count := command.Installments
+		if count == 0 {
+			count = 1
+		}
+		parts, err := domain.Allocate(amount, int(count))
+		if err != nil {
+			result.reject(err.Error())
+			return nil
+		}
+		kind := "credit"
+		if count > 1 {
+			kind = "installment_credit"
+		}
+		for _, part := range parts {
+			result.Legs = append(result.Legs, movement("settlement-"+command.Currency, command.Account, command.Currency, part, command.ValueDay, kind)...)
+		}
 	case "debit", "transfer":
 		available, err := domain.Add(source.Balance, -source.Held)
 		if err != nil {
@@ -145,21 +187,35 @@ func decide(ctx context.Context, queries *db.Queries, runID string, command Comm
 		if command.Kind == "debit" {
 			destination = "settlement-" + command.Currency
 		}
-		result.Legs = []Leg{{command.Account, command.Currency, amount}, {destination, command.Currency, -amount}}
+		result.Legs = movement(command.Account, destination, command.Currency, amount, command.ValueDay, command.Kind)
 	case "hold":
 		return createHold(ctx, queries, runID, command, amount, source, result)
 	case "capture":
 		return captureHold(ctx, queries, runID, command, amount, source, result)
+	case "reversal":
+		return reverseDebit(ctx, queries, runID, command, result)
 	}
 	return nil
 }
 
 func createHold(ctx context.Context, queries *db.Queries, runID string, command Command, amount int64, source *db.Account, result *Result) error {
+	latest, err := queries.LatestBookedDay(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if command.ValueDay != command.BookedDay || command.BookedDay < latest {
+		result.reject("authorization date unsupported")
+		return nil
+	}
 	if command.Authorization == "" {
 		result.reject("authorization required")
 		return nil
 	}
-	available, err := domain.Add(source.Balance, -source.Held)
+	balance, err := queries.HistoricalBalance(ctx, db.HistoricalBalanceParams{RunID: runID, AccountID: command.Account, ValueDay: command.ValueDay})
+	if err != nil {
+		return err
+	}
+	available, err := domain.Add(balance, -source.Held)
 	if err != nil {
 		return err
 	}
@@ -168,7 +224,7 @@ func createHold(ctx context.Context, queries *db.Queries, runID string, command 
 		state = "declined"
 		result.Status, result.Reason = "declined", "insufficient available funds"
 	}
-	inserted, err := queries.CreateHold(ctx, db.CreateHoldParams{RunID: runID, ID: command.Authorization, AccountID: command.Account, Amount: amount, State: state})
+	inserted, err := queries.CreateHold(ctx, db.CreateHoldParams{RunID: runID, ID: command.Authorization, AccountID: command.Account, Amount: amount, State: state, ValueDay: command.ValueDay})
 	if err != nil {
 		return err
 	}
@@ -191,7 +247,7 @@ func captureHold(ctx context.Context, queries *db.Queries, runID string, command
 	if err != nil {
 		return err
 	}
-	if hold.AccountID != command.Account || hold.State != "active" || amount > hold.Amount {
+	if hold.AccountID != command.Account || hold.State != "active" || amount > hold.Amount || command.ValueDay < hold.ValueDay {
 		result.reject("authorization inactive, mismatched or over-captured")
 		return nil
 	}
@@ -201,7 +257,7 @@ func captureHold(ctx context.Context, queries *db.Queries, runID string, command
 	if err != nil {
 		return err
 	}
-	result.Legs = []Leg{{command.Account, command.Currency, amount}, {"settlement-" + command.Currency, command.Currency, -amount}}
+	result.Legs = movement(command.Account, "settlement-"+command.Currency, command.Currency, amount, command.ValueDay, "capture")
 	return nil
 }
 
@@ -242,6 +298,8 @@ func (s *Store) appendResult(ctx context.Context, queries *db.Queries, run db.Ru
 		return err
 	}
 	result.Sequence = sequence
+	result.Policy = run.Policy
+	result.Command = &command
 	envelope, err := json.Marshal(result)
 	if err != nil {
 		return err
@@ -258,7 +316,7 @@ func (s *Store) appendResult(ctx context.Context, queries *db.Queries, run db.Ru
 		return err
 	}
 	for index, leg := range result.Legs {
-		err = queries.AppendPosting(ctx, db.AppendPostingParams{RunID: run.ID, Sequence: sequence, Leg: int32(index), AccountID: leg.Account, Currency: leg.Currency, Units: leg.Units})
+		err = queries.AppendPosting(ctx, db.AppendPostingParams{RunID: run.ID, Sequence: sequence, Leg: int32(index), AccountID: leg.Account, Currency: leg.Currency, Units: leg.Units, ValueDay: leg.ValueDay, Kind: leg.Kind})
 		if err != nil {
 			return err
 		}

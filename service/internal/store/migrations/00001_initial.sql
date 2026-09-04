@@ -1,3 +1,5 @@
+-- +goose Up
+-- +goose StatementBegin
 -- Dedicated simulation database only. Migration owner is separate from runtime.
 CREATE TABLE IF NOT EXISTS runs (
  id text PRIMARY KEY, profile text NOT NULL CHECK(profile IN ('live','fixture')),
@@ -100,3 +102,4 @@ DO $$ BEGIN
   GRANT UPDATE(day) ON runs TO ledger_app;
  END IF;
 END $$;
+-- +goose StatementEnd

@@ -360,6 +360,9 @@ pre {
 .scope {
   padding: 24px 0 12px;
 }
+.time-lab {
+  margin-top: 24px;
+}
 .scope p {
   max-width: 1000px;
 }

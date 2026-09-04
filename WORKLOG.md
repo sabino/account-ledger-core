@@ -231,3 +231,11 @@ Docker Compose now starts the dedicated database, one-shot bootstrap, two identi
 The browser check loaded the page, submitted a transfer, and returned zero reconciliation differences. A separate HTTP smoke test passed identical retries, a changed-payload conflict, a balanced transfer, and recovery after a 15-second delivery pause. The local image build, TypeScript build, frontend formatting check, and original 87 Python tests passed. I added a CI workflow, but it has not run on GitHub yet.
 
 The page says which capabilities are missing. Local startup is not a safe-deployment claim: there is still no host watchdog or measured whole-stack budget, and no VPS service was changed. The first notification adapter remains same-database delivery. The next work is compatibility and recovery, not calling this first dashboard complete.
+
+### 19:57:00 — Check · Port the six-day example and make migrations explicit
+
+The Go service now replays the supplied six-day example in an isolated run, with balanced counterpart postings. The database tests check the historical closes, the three fees, partial capture and release, principal reversal, the BHD split, and capitalization of AED 0.93 and BHD 0.008. The browser has a journal-cutoff view for the daily balances. This verifies the supplied example, not equivalence with every possible Python input.
+
+Go batch numbers are different from Python commit numbers. Prior-day maintenance and its triggering event are separate journal batches within one database transaction. A prefix query can inspect the boundary between them, but a live reader never saw that intermediate state before commit. The documentation now states this distinction.
+
+I also replaced startup schema execution with numbered Goose migrations and a database migration lock. Queries remain named SQL with generated Go types. Go formatting, vet, race-enabled unit and database integration tests, frontend formatting, and the TypeScript build passed locally. Codex implemented and checked this step with my authorization. The submitted Python code and PDF remain unchanged; no production service was touched.

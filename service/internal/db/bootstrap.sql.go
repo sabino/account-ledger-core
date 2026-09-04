@@ -81,7 +81,9 @@ func (q *Queries) CreateDemoRun(ctx context.Context) error {
 }
 
 const createRun = `-- name: CreateRun :exec
-INSERT INTO runs (id, profile) VALUES ($1, $2)
+INSERT INTO runs (id, profile, policy) VALUES ($1, $2,
+ jsonb_build_object('version', CASE WHEN $2 = 'fixture' THEN 'assessment-v1' ELSE 'simulation-v1' END,
+ 'fee_aed', 2500, 'rate_numerator', 1, 'rate_denominator', 2500))
 `
 
 type CreateRunParams struct {

@@ -3,15 +3,20 @@ package store
 
 import (
 	"context"
-	_ "embed"
+	"embed"
+	"encoding/json"
 	"errors"
+	"io/fs"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/lock"
 	"github.com/sabino/account-ledger-core/service/internal/db"
 )
 
-//go:embed schema.sql
-var schema string
+//go:embed migrations/*.sql
+var migrations embed.FS
 
 type Store struct {
 	Pool     *pgxpool.Pool
@@ -29,24 +34,46 @@ type Command struct {
 	Authorization string `json:"authorization,omitempty"`
 	BookedDay     int32  `json:"booked_day"`
 	ValueDay      int32  `json:"value_day"`
+	Installments  int32  `json:"installments,omitempty"`
+	TargetEvent   string `json:"target_event,omitempty"`
 }
 
 type Leg struct {
 	Account  string `json:"account"`
 	Currency string `json:"currency"`
 	Units    int64  `json:"units,string"`
+	ValueDay int32  `json:"value_day"`
+	Kind     string `json:"kind"`
 }
 
 type Result struct {
-	ID       string `json:"id"`
-	Status   string `json:"status"`
-	Reason   string `json:"reason,omitempty"`
-	Sequence int64  `json:"sequence,string"`
-	Instance string `json:"instance"`
-	Kind     string `json:"kind"`
-	Legs     []Leg  `json:"legs"`
-	Captured int64  `json:"captured,string"`
-	Released int64  `json:"released,string"`
+	ID       string          `json:"id"`
+	Status   string          `json:"status"`
+	Reason   string          `json:"reason,omitempty"`
+	Sequence int64           `json:"sequence,string"`
+	Instance string          `json:"instance"`
+	Kind     string          `json:"kind"`
+	Legs     []Leg           `json:"legs"`
+	Captured int64           `json:"captured,string"`
+	Released int64           `json:"released,string"`
+	Accruals []Accrual       `json:"accruals,omitempty"`
+	Policy   json.RawMessage `json:"policy"`
+	Command  *Command        `json:"command,omitempty"`
+}
+
+type Accrual struct {
+	Account  string `json:"account"`
+	Currency string `json:"currency"`
+	ValueDay int32  `json:"value_day"`
+	Basis    int64  `json:"basis,string"`
+	Amount   int64  `json:"amount,string"`
+}
+
+func movement(debit, credit, currency string, amount int64, day int32, kind string) []Leg {
+	return []Leg{
+		{Account: debit, Currency: currency, Units: amount, ValueDay: day, Kind: kind},
+		{Account: credit, Currency: currency, Units: -amount, ValueDay: day, Kind: kind},
+	}
 }
 
 func (r *Result) reject(reason string) {
@@ -89,6 +116,22 @@ func Open(ctx context.Context, url, instance string) (*Store, error) {
 }
 
 func (s *Store) Migrate(ctx context.Context) error {
-	_, err := s.Pool.Exec(ctx, schema)
+	database := stdlib.OpenDB(*s.Pool.Config().ConnConfig)
+	defer database.Close()
+	database.SetMaxOpenConns(2)
+	files, err := fs.Sub(migrations, "migrations")
+	if err != nil {
+		return err
+	}
+	locker, err := lock.NewPostgresSessionLocker()
+	if err != nil {
+		return err
+	}
+	provider, err := goose.NewProvider(goose.DialectPostgres, database, files,
+		goose.WithSessionLocker(locker), goose.WithDisableGlobalRegistry(true))
+	if err != nil {
+		return err
+	}
+	_, err = provider.Up(ctx)
 	return err
 }

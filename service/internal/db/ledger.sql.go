@@ -40,8 +40,8 @@ func (q *Queries) AppendBatch(ctx context.Context, arg AppendBatchParams) error 
 }
 
 const appendPosting = `-- name: AppendPosting :exec
-INSERT INTO postings (run_id, sequence, leg, account_id, currency, units)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO postings (run_id, sequence, leg, account_id, currency, units, value_day, kind)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `
 
 type AppendPostingParams struct {
@@ -51,6 +51,8 @@ type AppendPostingParams struct {
 	AccountID string `json:"account_id"`
 	Currency  string `json:"currency"`
 	Units     int64  `json:"units"`
+	ValueDay  int32  `json:"value_day"`
+	Kind      string `json:"kind"`
 }
 
 func (q *Queries) AppendPosting(ctx context.Context, arg AppendPostingParams) error {
@@ -61,6 +63,8 @@ func (q *Queries) AppendPosting(ctx context.Context, arg AppendPostingParams) er
 		arg.AccountID,
 		arg.Currency,
 		arg.Units,
+		arg.ValueDay,
+		arg.Kind,
 	)
 	return err
 }
@@ -163,8 +167,8 @@ func (q *Queries) CountUnbalancedBatches(ctx context.Context, runID string) (int
 }
 
 const createHold = `-- name: CreateHold :execrows
-INSERT INTO holds (run_id, id, account_id, amount, state)
-VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING
+INSERT INTO holds (run_id, id, account_id, amount, state, value_day)
+VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING
 `
 
 type CreateHoldParams struct {
@@ -173,6 +177,7 @@ type CreateHoldParams struct {
 	AccountID string `json:"account_id"`
 	Amount    int64  `json:"amount"`
 	State     string `json:"state"`
+	ValueDay  int32  `json:"value_day"`
 }
 
 func (q *Queries) CreateHold(ctx context.Context, arg CreateHoldParams) (int64, error) {
@@ -182,6 +187,7 @@ func (q *Queries) CreateHold(ctx context.Context, arg CreateHoldParams) (int64, 
 		arg.AccountID,
 		arg.Amount,
 		arg.State,
+		arg.ValueDay,
 	)
 	if err != nil {
 		return 0, err
@@ -343,7 +349,7 @@ func (q *Queries) LockCommand(ctx context.Context, arg LockCommandParams) (Comma
 }
 
 const lockHold = `-- name: LockHold :one
-SELECT run_id, id, account_id, amount, state, captured, released FROM holds WHERE run_id = $1 AND id = $2 FOR UPDATE
+SELECT run_id, id, account_id, amount, state, captured, released, value_day FROM holds WHERE run_id = $1 AND id = $2 FOR UPDATE
 `
 
 type LockHoldParams struct {
@@ -362,6 +368,7 @@ func (q *Queries) LockHold(ctx context.Context, arg LockHoldParams) (Hold, error
 		&i.State,
 		&i.Captured,
 		&i.Released,
+		&i.ValueDay,
 	)
 	return i, err
 }

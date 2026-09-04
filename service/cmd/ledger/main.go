@@ -51,6 +51,9 @@ func main() {
 		if e = db.Seed(ctx); e != nil {
 			log.Fatal(e)
 		}
+		if e = db.SeedFixture(ctx); e != nil {
+			log.Fatal(e)
+		}
 		return
 	}
 	mux := http.NewServeMux()
@@ -87,8 +90,27 @@ func main() {
 		}
 		w.Write([]byte("ready"))
 	})
-	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) { v, e := db.Status(r.Context()); reply(w, v, e) })
-	mux.HandleFunc("GET /api/accounts", func(w http.ResponseWriter, r *http.Request) { v, e := db.Accounts(r.Context(), "demo"); reply(w, v, e) })
+	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
+		value, err := db.Status(r.Context())
+		reply(w, value, err)
+	})
+	mux.HandleFunc("GET /api/accounts", func(w http.ResponseWriter, r *http.Request) {
+		value, err := db.Accounts(r.Context(), "demo")
+		reply(w, value, err)
+	})
+	mux.HandleFunc("GET /api/fixture", func(w http.ResponseWriter, r *http.Request) {
+		known := int64(-1)
+		if value := r.URL.Query().Get("known"); value != "" {
+			var err error
+			known, err = strconv.ParseInt(value, 10, 64)
+			if err != nil || known < 0 {
+				w.WriteHeader(400)
+				return
+			}
+		}
+		value, err := db.FixtureReport(r.Context(), known)
+		reply(w, value, err)
+	})
 	mux.HandleFunc("GET /api/journal", func(w http.ResponseWriter, r *http.Request) {
 		cutoff, _ := strconv.ParseInt(r.URL.Query().Get("cutoff"), 10, 64)
 		v, e := db.Journal(r.Context(), "demo", r.URL.Query().Get("account"), cutoff)

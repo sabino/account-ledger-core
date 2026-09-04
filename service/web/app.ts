@@ -214,3 +214,59 @@ async function poll() {
   setTimeout(poll, 2500);
 }
 poll();
+
+let fixtureRequest = 0;
+async function showFixture() {
+  const request = ++fixtureRequest;
+  const known = $<HTMLInputElement>("knowledge").value;
+  $("knowledge-label").textContent = known;
+  const state = await api("fixture?known=" + known);
+  if (request !== fixtureRequest) return;
+  $("fixture-days").replaceChildren(
+    ...state.daily.map((day: { day: number; AED: string; BHD: string }) => {
+      const row = document.createElement("tr");
+      for (const text of [
+        "Day " + day.day,
+        money(day.AED, "AED"),
+        money(day.BHD, "BHD"),
+      ]) {
+        const cell = document.createElement("td");
+        cell.textContent = text;
+        row.append(cell);
+      }
+      return row;
+    }),
+  );
+  const last = state.batches[0];
+  if (!last) {
+    $("fixture-batch").textContent =
+      "No records known yet. Both accounts start at zero.";
+    return;
+  }
+  const result = last.result;
+  const legs = result.legs.map(
+    (leg: {
+      units: string;
+      account: string;
+      currency: string;
+      value_day: number;
+      kind: string;
+    }) => {
+      const units = BigInt(leg.units);
+      return `${units > 0n ? "Debit " : "Credit"} ${leg.account} · ${money((units < 0n ? -units : units).toString(), leg.currency)} · value Day ${leg.value_day} · ${leg.kind}`;
+    },
+  );
+  $("fixture-batch").textContent =
+    `Batch #${last.sequence}: ${result.id} · ${result.status}\n${result.reason || ""}\n${legs.join("\n") || "No monetary posting. The decision is still recorded."}`;
+}
+let fixtureTimer: ReturnType<typeof setTimeout>;
+$("knowledge").addEventListener("input", () => {
+  clearTimeout(fixtureTimer);
+  fixtureTimer = setTimeout(
+    () => showFixture().catch((error) => toast(error.message)),
+    180,
+  );
+});
+showFixture().catch((error) => {
+  $("fixture-batch").textContent = error.message;
+});

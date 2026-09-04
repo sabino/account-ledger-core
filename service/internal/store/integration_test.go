@@ -231,13 +231,14 @@ func TestDatabaseRejectsUnbalancedBatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := Result{ID: "malformed", Kind: "transfer", Status: "accepted", Legs: []Leg{{"a", "AED", 100}, {"b", "AED", -99}}}
+	result := Result{ID: "malformed", Kind: "transfer", Status: "accepted", Legs: movement("a", "b", "AED", 100, 1, "transfer")}
+	result.Legs[1].Units = -99
 	raw, _ := json.Marshal(result)
 	if err = q.AppendBatch(ctx, db.AppendBatchParams{RunID: run, Sequence: seq, CommandID: "malformed", Kind: "transfer", BookedDay: 1, ValueDay: 1, Instance: "test", Envelope: raw}); err != nil {
 		t.Fatal(err)
 	}
 	for i, leg := range result.Legs {
-		if err = q.AppendPosting(ctx, db.AppendPostingParams{RunID: run, Sequence: seq, Leg: int32(i), AccountID: leg.Account, Currency: leg.Currency, Units: leg.Units}); err != nil {
+		if err = q.AppendPosting(ctx, db.AppendPostingParams{RunID: run, Sequence: seq, Leg: int32(i), AccountID: leg.Account, Currency: leg.Currency, Units: leg.Units, ValueDay: 1, Kind: "transfer"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -285,4 +286,96 @@ func assertReconciled(t *testing.T, s *Store, run string) {
 	if result["ok"] != true {
 		t.Fatal(result)
 	}
+}
+
+func TestSixDayFixture(t *testing.T) {
+	ctx := context.Background()
+	owner, err := Open(ctx, os.Getenv("TEST_DATABASE_URL"), "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Pool.Close()
+	if err = owner.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = owner.SeedFixture(ctx); err != nil {
+		t.Fatal(err)
+	}
+	final, err := owner.Finalize(ctx, FixtureRun, 1, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final.Sequence != 12 {
+		t.Fatalf("expected final batch 12, got %d", final.Sequence)
+	}
+	expected := []int64{25000, 22500, 62500, 41500, 39000, 39000}
+	for i, want := range expected {
+		balance, err := owner.Queries.HistoricalBalance(ctx, db.HistoricalBalanceParams{
+			RunID: FixtureRun, AccountID: "ACC-001", ValueDay: int32(i + 1), KnownThrough: 11,
+		})
+		if err != nil || balance != want {
+			t.Fatalf("day %d: got %d want %d (%v)", i+1, balance, want, err)
+		}
+	}
+	for _, check := range []struct{ sequence, want int64 }{{6, 46500}, {7, -20500}, {8, -20500}, {9, -23000}, {10, 39000}} {
+		balance, err := owner.Queries.HistoricalBalance(ctx, db.HistoricalBalanceParams{RunID: FixtureRun, AccountID: "ACC-001", ValueDay: 5, KnownThrough: check.sequence})
+		if err != nil || balance != check.want {
+			t.Fatalf("knowledge %d: %d / %v", check.sequence, balance, err)
+		}
+	}
+	var aed, bhd int64
+	for _, accrual := range final.Accruals {
+		if accrual.Currency == "AED" {
+			aed += accrual.Amount
+		} else {
+			bhd += accrual.Amount
+		}
+	}
+	if aed != 93 || bhd != 8 {
+		t.Fatalf("interest: %d / %d", aed, bhd)
+	}
+	commands := FixtureCommands()
+	e7, err := owner.Process(ctx, FixtureRun, commands[6])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var feeDays []int32
+	for _, leg := range e7.Legs {
+		if leg.Account == "ACC-001" && leg.Kind == "overdraft_fee" {
+			feeDays = append(feeDays, leg.ValueDay)
+		}
+	}
+	if fmt.Sprint(feeDays) != "[2 4]" {
+		t.Fatal(feeDays)
+	}
+	e9, err := owner.Process(ctx, FixtureRun, commands[8])
+	if err != nil || e9.Sequence != 10 {
+		t.Fatalf("E9: %+v %v", e9, err)
+	}
+	e10, err := owner.Process(ctx, FixtureRun, commands[9])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parts []int64
+	for _, leg := range e10.Legs {
+		if leg.Account == "ACC-002" {
+			parts = append(parts, -leg.Units)
+		}
+	}
+	if fmt.Sprint(parts) != "[3334 3333 3333]" {
+		t.Fatal(parts)
+	}
+	e5, err := owner.Process(ctx, FixtureRun, commands[4])
+	if err != nil || e5.Captured != 18500 || e5.Released != 1500 {
+		t.Fatalf("E5 %+v %v", e5, err)
+	}
+	e8, err := owner.Process(ctx, FixtureRun, commands[7])
+	if err != nil || e8.Status != "declined" {
+		t.Fatalf("E8 %+v %v", e8, err)
+	}
+	e6, err := owner.Process(ctx, FixtureRun, commands[5])
+	if err != nil || e6.Status != "rejected" {
+		t.Fatalf("E6 %+v %v", e6, err)
+	}
+	assertReconciled(t, owner, FixtureRun)
 }

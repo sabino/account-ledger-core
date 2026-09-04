@@ -42,6 +42,12 @@ type Control struct {
 	GuardReason      string             `json:"guard_reason"`
 }
 
+type FeeAssessment struct {
+	RunID     string `json:"run_id"`
+	AccountID string `json:"account_id"`
+	ValueDay  int32  `json:"value_day"`
+}
+
 type Hold struct {
 	RunID     string `json:"run_id"`
 	ID        string `json:"id"`
@@ -50,6 +56,7 @@ type Hold struct {
 	State     string `json:"state"`
 	Captured  int64  `json:"captured"`
 	Released  int64  `json:"released"`
+	ValueDay  int32  `json:"value_day"`
 }
 
 type JournalBatch struct {
@@ -83,6 +90,13 @@ type Outbox struct {
 	DeliveredAt pgtype.Timestamptz `json:"delivered_at"`
 }
 
+type Period struct {
+	RunID      string `json:"run_id"`
+	StartDay   int32  `json:"start_day"`
+	ThroughDay int32  `json:"through_day"`
+	CommandID  string `json:"command_id"`
+}
+
 type PgReplicationSlot struct {
 	Database   pgtype.Text `json:"database"`
 	RestartLsn interface{} `json:"restart_lsn"`
@@ -95,6 +109,8 @@ type Posting struct {
 	AccountID string `json:"account_id"`
 	Currency  string `json:"currency"`
 	Units     int64  `json:"units"`
+	ValueDay  int32  `json:"value_day"`
+	Kind      string `json:"kind"`
 }
 
 type ReplicaHeartbeat struct {
@@ -102,6 +118,12 @@ type ReplicaHeartbeat struct {
 	SeenAt    pgtype.Timestamptz `json:"seen_at"`
 	Requests  int64              `json:"requests"`
 	HeapBytes int64              `json:"heap_bytes"`
+}
+
+type Reversal struct {
+	RunID       string `json:"run_id"`
+	TargetEvent string `json:"target_event"`
+	CommandID   string `json:"command_id"`
 }
 
 type Run struct {

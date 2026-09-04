@@ -16,8 +16,8 @@ UPDATE accounts SET balance = $3, held = $4, version = version + 1
 WHERE run_id = $1 AND id = $2;
 
 -- name: CreateHold :execrows
-INSERT INTO holds (run_id, id, account_id, amount, state)
-VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING;
+INSERT INTO holds (run_id, id, account_id, amount, state, value_day)
+VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING;
 
 -- name: LockHold :one
 SELECT * FROM holds WHERE run_id = $1 AND id = $2 FOR UPDATE;
@@ -34,8 +34,8 @@ INSERT INTO journal_batches (run_id, sequence, command_id, kind, booked_day, val
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 
 -- name: AppendPosting :exec
-INSERT INTO postings (run_id, sequence, leg, account_id, currency, units)
-VALUES ($1, $2, $3, $4, $5, $6);
+INSERT INTO postings (run_id, sequence, leg, account_id, currency, units, value_day, kind)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 
 -- name: CompleteCommand :exec
 UPDATE command_results SET response = $3 WHERE run_id = $1 AND id = $2;

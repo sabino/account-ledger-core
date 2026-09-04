@@ -182,12 +182,52 @@
           <pre id="reconciliation">No check requested yet.</pre>
         </div>
       </section>
+      <section class="panel time-lab">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">SAME DAY. DIFFERENT KNOWLEDGE.</p>
+            <h2>The six-day time laboratory</h2>
+          </div>
+          <span class="badge">ISOLATED ASSESSMENT REPLAY</span>
+        </div>
+        <p>
+          A later record can change what we calculate about an earlier day. It
+          does not edit the record that was already there. Move the cutoff to
+          see exactly what the ledger knew.
+        </p>
+        <label for="knowledge"
+          >Include committed batches through
+          <strong id="knowledge-label">12</strong></label
+        >
+        <input id="knowledge" type="range" min="0" max="12" value="12" />
+        <div class="range-labels">
+          <span>No records known</span><span>Capitalization included</span>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Value day</th>
+                <th>AED customer balance</th>
+                <th>BHD customer balance</th>
+              </tr>
+            </thead>
+            <tbody id="fixture-days"></tbody>
+          </table>
+        </div>
+        <p class="note">
+          Batch 7: E7 and the fees for Days 2 and 4. Batch 9: the Day-5 fee.
+          Batch 10: E9 reverses principal. Batch 12: rounded daily interest is
+          capitalized.
+        </p>
+        <pre id="fixture-batch">Loading the committed batch…</pre>
+      </section>
       <section class="scope">
         <h2>A proof of concept, with visible boundaries.</h2>
         <p>
-          This first slice runs transfers, holds, final partial capture, exact
-          minor-unit arithmetic and durable retries. It is not a full bank. The
-          six-day Python compatibility port, external-statement matching,
+          This experiment runs transfers, holds, final partial capture, exact
+          minor-unit arithmetic, durable retries and the original six-day
+          scenario. It is not a full bank. External-statement matching,
           network-delivery failures, CDC, Iceberg, ClickHouse and Metabase are
           still being implemented; none are represented as healthy here.
         </p>

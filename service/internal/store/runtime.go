@@ -134,7 +134,7 @@ func (s *Store) Status(ctx context.Context) (map[string]any, error) {
 		"pause_reason": state.PauseReason, "guard_fresh": state.Fresh,
 		"pending_deliveries": state.Pending, "database_bytes": state.DatabaseBytes,
 		"replicas": replicas, "serving_instance": s.Instance, "cdc": "not implemented",
-		"profile": "continuous transfers; assessment compatibility in development"}, nil
+		"profile": "continuous transfers; separate six-day assessment replay"}, nil
 }
 
 func (s *Store) SetRate(ctx context.Context, eps int32) error {

@@ -32,12 +32,15 @@ The test profile uses isolated run IDs in the local database and the restricted 
 - Immutable journal rows, balanced batch checks, and matching complete batch envelopes.
 - Account picker, statements, shared rate controls, actual replica heartbeats, and reconciliation.
 - A same-database outbox/inbox adapter with a bounded delivery pause.
+- The isolated six-day fixture, including historical fees, linked principal reversal, installment allocation, daily interest, and final capitalization. A knowledge-cutoff slider shows how later records change historical projections.
 
-The full six-day fee/reversal/finalization port, virtual-day transitions, external reconciliation, a network delivery sink, CDC, Iceberg, ClickHouse, Metabase, host watchdog, backup recovery, and deployment gates are still being worked on. A green first-slice test is not evidence for these missing features.
+Continuous virtual-day transitions, external reconciliation, a network delivery sink, the reporting pipeline, Metabase, host watchdog, backup recovery, and deployment gates are still being worked on. Fixture tests are not evidence for these missing features or general equivalence with every Python input.
+
+The Go fixture retains the supplied numbers, not the Python journal positions. Each balanced batch includes its counterpart postings. Prior-day maintenance and the triggering event are separate batches inside one database transaction, so readers cannot observe the intermediate maintenance batch before that transaction commits.
 
 ## Code and queries
 
-`internal/domain` owns exact money functions. `internal/store` owns explicit transactions. Named SQL lives under `queries/`; `sqlc` generates `internal/db`. Do not edit generated files. `internal/store/schema.sql` is the initial schema; versioned migration handling is still needed before public deployment.
+`internal/domain` owns exact money functions. `internal/store` owns explicit transactions. Named SQL lives under `queries/`; `sqlc` generates `internal/db`. Do not edit generated files. Numbered SQL migrations live under `internal/store/migrations`; Goose records applied versions and takes a PostgreSQL migration lock. The dedicated migration command, not the HTTP server, runs them.
 
 With Go and Node installed, run these from `service/`:
 
