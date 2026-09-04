@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Ledger Lab · Sabino</title>
+    <meta
+      name="description"
+      content="A live, bounded double-entry simulation. Follow money across accounts and watch two service instances coordinate."
+    />
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/"
+        >◈ <span>LEDGER<span class="light">LAB</span></span></a
+      ><span class="badge">SYNTHETIC MONEY · LIVE EXPERIMENT</span
+      ><span id="connection" role="status">Connecting…</span>
+    </header>
+    <main>
+      <section class="intro">
+        <div>
+          <p class="eyebrow">FOLLOW THE MONEY</p>
+          <h1>One transfer.<br />Two sides. <em>One truth.</em></h1>
+          <p>
+            Move money between fictional accounts. See which instance handles
+            it, what gets recorded, and whether everything still adds up.
+          </p>
+        </div>
+        <div class="control panel">
+          <div class="section-heading">
+            <h2>Shared simulation</h2>
+            <span id="guard" class="badge">Checking safety</span>
+          </div>
+          <div class="rate">
+            <strong id="rate">—</strong><span>events / second</span>
+          </div>
+          <label for="eps">Target rate · shared by every visitor</label
+          ><input id="eps" type="range" min="0" max="20" value="1" />
+          <div class="range-labels"><span>Paused</span><span>20 max</span></div>
+          <button id="apply-rate">Apply rate</button>
+          <p class="note">
+            Boosts return to 1 event/sec after 60 seconds. Server limits always
+            win.
+          </p>
+        </div>
+      </section>
+      <section class="metrics" aria-label="Live counters">
+        <div><span>Committed batches</span><strong id="batches">—</strong></div>
+        <div>
+          <span>Waiting for delivery</span><strong id="pending">—</strong>
+        </div>
+        <div>
+          <span>Database footprint</span><strong id="db-size">—</strong>
+        </div>
+        <div>
+          <span>Balance checks</span
+          ><strong id="reconciled">Not checked</strong>
+        </div>
+      </section>
+      <section class="grid">
+        <div class="panel transfer">
+          <div class="section-heading">
+            <h2>Move money</h2>
+            <span class="badge">ATOMIC TRANSFER</span>
+          </div>
+          <form id="transfer-form">
+            <label for="source">From account</label
+            ><select id="source" required></select>
+            <div class="account-balance" id="source-balance">—</div>
+            <div class="connector">
+              ↓ <span>debit source · credit destination</span>
+            </div>
+            <label for="destination">To account · same currency</label
+            ><select id="destination" required></select
+            ><label for="amount">Amount</label>
+            <div class="amount-row">
+              <input
+                id="amount"
+                type="text"
+                inputmode="decimal"
+                value="10.00"
+                required
+                autocomplete="off"
+              /><span id="currency">AED</span>
+            </div>
+            <button type="submit">Send transfer <span>↗</span></button>
+          </form>
+          <p class="note">
+            No money is created by a transfer. Both sides commit together—or
+            neither does.
+          </p>
+          <div id="transfer-result" role="status"></div>
+        </div>
+        <div class="panel flow">
+          <div class="section-heading">
+            <h2>Inside the service</h2>
+            <span class="badge">ACTUAL INSTANCE STATE</span>
+          </div>
+          <div class="node browser">Your request</div>
+          <div class="fork-line">↓ &nbsp; load balanced &nbsp; ↓</div>
+          <div id="replicas" class="replicas">
+            <div class="node">Waiting for instances…</div>
+          </div>
+          <div class="fork-line">
+            ↘ &nbsp; account locks + commit order &nbsp; ↙
+          </div>
+          <div class="node database">
+            <strong>PostgreSQL</strong
+            ><span>Journal + balances + idempotency + outbox</span>
+          </div>
+          <div class="fork-line">↓ &nbsp; durable delivery &nbsp; ↓</div>
+          <div class="node">
+            Simulated inbox
+            <span>Same-database adapter in this first slice</span>
+          </div>
+          <p class="note">
+            Two applications, one database. This demonstrates instance
+            recovery—not database high availability.
+          </p>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">THE AUDIT TRAIL</p>
+            <h2>Every decision leaves a trace.</h2>
+          </div>
+          <label class="filter"
+            >Statement
+            <select id="statement">
+              <option value="">All accounts</option>
+            </select></label
+          >
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Sequence / time</th>
+                <th>Command</th>
+                <th>Outcome</th>
+                <th>Debit (+)</th>
+                <th>Credit (−)</th>
+                <th>Instance</th>
+              </tr>
+            </thead>
+            <tbody id="journal"></tbody>
+          </table>
+        </div>
+        <p class="note">
+          Bank-side debit/credit signs are not customer balance signs. Customer
+          deposits are liabilities: a credit increases what the bank owes the
+          customer. Latest 60 batches shown.
+        </p>
+      </section>
+      <section class="grid">
+        <div class="panel">
+          <p class="eyebrow">BREAK DELIVERY, NOT MONEY</p>
+          <h2>A small, safe failure.</h2>
+          <p>
+            Pause notification delivery for 15 seconds. Transfers continue; the
+            backlog should drain after the pause.
+          </p>
+          <button id="pause-outbox" class="secondary">
+            Pause delivery · 15 sec
+          </button>
+          <p class="note">
+            One experiment per minute, shared globally. No container or host
+            controls are exposed.
+          </p>
+        </div>
+        <div class="panel">
+          <p class="eyebrow">CHECK, DON'T ASSUME</p>
+          <h2>Does it still add up?</h2>
+          <p>
+            Compare account balances against the journal, verify every batch
+            balances, and check reserved funds against active holds.
+          </p>
+          <button id="reconcile" class="secondary">Run reconciliation</button>
+          <pre id="reconciliation">No check requested yet.</pre>
+        </div>
+      </section>
+      <section class="scope">
+        <h2>A proof of concept, with visible boundaries.</h2>
+        <p>
+          This first slice runs transfers, holds, final partial capture, exact
+          minor-unit arithmetic and durable retries. It is not a full bank. The
+          six-day Python compatibility port, external-statement matching,
+          network-delivery failures, CDC, Iceberg, ClickHouse and Metabase are
+          still being implemented; none are represented as healthy here.
+        </p>
+        <a
+          href="https://github.com/sabino/account-ledger-core"
+          target="_blank"
+          rel="noreferrer"
+          >Read the source ↗</a
+        >
+      </section>
+    </main>
+    <footer>
+      Ledger Lab / Felipe Sabino <span>Go · PostgreSQL · double-entry</span>
+    </footer>
+    <div id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

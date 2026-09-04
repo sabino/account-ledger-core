@@ -1,0 +1,34 @@
+name: Go service checks
+on:
+  push:
+    branches: [feat/go-ledger-service]
+  pull_request:
+    paths: ["service/**", "compose.yaml", "deploy/local/**", ".github/workflows/go-service.yml"]
+permissions:
+  contents: read
+jobs:
+  local-stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Generate queries and verify no drift
+        run: |
+          make -C service generate
+          git diff --exit-code -- service/internal/db
+      - name: Start local stack
+        run: docker compose up --build -d --wait
+      - name: Formatting, static checks and unit tests
+        run: |
+          docker compose --profile test run --rm test-runner sh -c 'test -z "$(gofmt -l cmd internal)" && go vet ./... && go test -race ./...'
+          docker run --rm -v "$PWD/service:/src" -w /src/web node:24.14.0-bookworm-slim npm ci
+          docker run --rm -v "$PWD/service:/src" -w /src/web node:24.14.0-bookworm-slim sh -c 'npm run check && npm run build'
+      - name: Application-role concurrency tests
+        run: docker compose --profile test run --rm test-runner
+      - name: Check HTTP and reconciliation
+        run: |
+          curl --fail http://localhost:8088/readyz
+          curl --fail http://localhost:8088/api/reconciliation | jq -e '.ok == true'
+      - name: Stop only this job's Compose project
+        if: always()
+        run: docker compose down

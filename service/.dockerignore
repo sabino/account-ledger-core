@@ -1,0 +1,3 @@
+web/node_modules
+cmd/ledger/web/app.js
+**/*_test.go
