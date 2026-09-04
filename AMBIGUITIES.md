@@ -12,7 +12,7 @@ A late value-dated event can change a historical balance. Every projection there
 
 ## AMB-03 — Daily close
 
-The close boundary is unspecified. I close prior days when booked time advances, rescan days changed by a backdated posting, and sweep once before interest. A temporary same-day negative balance does not receive a fee.
+The close boundary is unspecified. When booked time advances, I close prior days only for the incoming event's account; finalization sweeps every account. I rescan days changed by a backdated posting. A temporary same-day negative balance does not receive a fee.
 
 ## AMB-04 — Reversal scope
 
@@ -32,7 +32,7 @@ The prompt does not say whether its balance test is sufficient. In this exercise
 
 ## AMB-08 — Hold endings
 
-Approved holds have no expiry, void, or cancellation rule. Here, an approved hold remains active until its one final settlement. Auth-B is declined and never becomes active.
+Approved holds have no expiry, void, cancellation, or authorization reversal rule. Here, an approved hold remains active until its one final settlement. Auth-B is declined and never becomes active.
 
 ## AMB-09 — BHD installments
 
@@ -40,7 +40,7 @@ BHD 10.000 cannot be divided into three identical three-decimal values. I alloca
 
 ## AMB-10 — BHD overdraft fees
 
-The only supplied fee is AED 25.00, while ACC-002 uses BHD. I do not invent FX or a BHD fee. A negative BHD close that needs a fee fails explicitly.
+The only supplied fee is AED 25.00, while ACC-002 uses BHD. I do not invent FX or a BHD fee. A negative BHD close fails as a configuration error without consuming the incoming event ID; it does not reject an event for another account.
 
 ## AMB-11 — Interest order
 
@@ -56,7 +56,7 @@ The same event ID and content is an idempotent no-op. Different content with the
 
 ## AMB-14 — Required failing test
 
-I keep it in `known_limitation/` with a separate command so the correctness suite stays green. It exposes missing post-finalization correction handling.
+I keep it in `known_limitation/` with a separate command so the correctness suite stays green. Finalization ends this bounded replay, so every later event is rejected. The test exposes missing controlled post-finalization correction handling.
 
 ## AMB-15 — Number input
 
@@ -80,9 +80,9 @@ E8 is an accepted request with a declined business outcome. E6 is a rejected req
 
 ## The two choices most likely to be challenged
 
-### Why does E7 create three fees?
+### Why does E7 lead to three fees?
 
-E7 arrives on Day 5 with value day 2. It changes the reconstructed closes for Days 2–5. Including retained earlier fees as days advance gives negative closes on Days 2, 4, and 5, so each receives one AED 25.00 fee.
+E7 arrives on booked Day 5 with value day 2. It makes the already-closed Days 2 and 4 negative, so both receive a fee. Day 5 remains open. When booked Day 6 arrives, Day 5 closes negative and receives the third fee. Each is AED 25.00.
 
 ### Why do those fees remain after E9?
 

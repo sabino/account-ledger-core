@@ -77,12 +77,12 @@ I create no remainder state to discard or allocate. The finalization path constr
 - **What replaced it:** Direct lexical validation followed by integer construction of whole and fractional minor units.
 - **Cost or limitation I retained:** The accepted input grammar is deliberately plain decimal text; exponent notation and non-finite values are rejected.
 
-### Approach-02 — Assessing fees only when a monetary posting arrived
+### Approach-02 — Treating a backdated posting as the current day's close
 
-- **Why I considered it:** E7 is the fixture's late value-dated posting, so scanning its affected days immediately was enough to produce the expected Days 2, 4, and 5 fees.
-- **Evidence that changed my decision:** That approach missed quiet negative days with no later monetary event and treated a temporary negative after the first same-day posting as though the day had already closed.
+- **Why I considered it:** Scanning every day affected by E7 immediately produced the three expected fee days with little machinery.
+- **Evidence that changed my decision:** A backdated debit followed by a rescue credit on the same booked day exposed a premature fee. Days 2 and 4 were already closed when E7 arrived, but Day 5 was still open.
 - **Why I abandoned it:** A daily closing-balance rule requires an explicit close boundary, not merely a posting callback.
-- **What replaced it:** I reconcile earlier days when the booked day advances, rescan immediately only for accepted backdated monetary effects, and sweep the remaining requested window before interest finalization.
+- **What replaced it:** A backdated posting rescans only through the latest closed day. A later booked day closes the previous day, and finalization closes the remaining requested window.
 - **Cost or limitation I retained:** My in-memory core uses supplied booked-day transitions and explicit finalization instead of a production clock or scheduler.
 
 ### Approach-03 — Reversing every posting produced by the target event

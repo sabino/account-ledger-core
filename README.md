@@ -13,7 +13,7 @@ event -> decision -> immutable facts -> report
 - A **fact** permanently records what was accepted, rejected, or posted.
 - A **report** calculates balances and states from those facts.
 
-The journal never edits a fact. Each operation builds a complete batch and appends all of it or none of it.
+The journal never edits a fact. Every batch is all-or-nothing: all facts in that batch are appended, or none are. Processing one event may first append a prior-day fee batch and then append the event-result batch; the returned result exposes everything appended by that call.
 
 ## Run it
 
@@ -32,7 +32,7 @@ The assessment also requires one intentionally failing test:
 python3 -m unittest discover -s known_limitation -p 'test_*.py' -v
 ```
 
-Exactly one test should fail. It demonstrates that this bounded core cannot accept a backdated transaction after interest has been capitalized. Production would require a controlled correction workflow.
+Exactly one test should fail. Finalization ends this bounded replay, so every later event is rejected. The test demonstrates the missing controlled correction workflow for a backdated transaction after interest has been capitalized.
 
 ## Three kinds of time
 

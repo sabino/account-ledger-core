@@ -169,3 +169,15 @@ I regenerated the architecture artifact from the final source. It is exactly fou
 ### 00:51:46 — Check · Make AI assistance explicit
 
 I replaced vague references to independent or adversarial reviewers with explicit AI review wording. This only clarifies how the existing checks were performed; no code, tests, calculations, behavior, or design decisions changed.
+
+## 2026-09-04 — Final adversarial correction
+
+### 02:01:12 — Act · Charge closed days, not an open day
+
+A contextual AI review found that a backdated posting could assess a fee for its still-open booked day. I reproduced it with an AED 100.00 credit, a booked-Day-5 debit value-dated Day 1, and a rescue credit later on booked Day 5. The old path retained a premature Day-5 fee and closed at AED 25.00; the correct close is AED 50.00. I changed the rescan to stop at the latest closed day and added that exact regression.
+
+The same pass exposed two related boundaries. Prior-day fee work could reject an event for another account, and a processing result could hide the maintenance commit created before its event commit. Event-time closing is now account-local, same-account configuration failure consumes no event ID, and `ProcessResult` exposes every fact appended by the call while identifying the receipt's own commit separately. In the supplied replay, E7 now records the already-closed Day-2 and Day-4 fees; the arrival of E9 closes Day 5 in commit 9 before the reversal is recorded in commit 10. The three fees, balances, and interest totals do not change.
+
+I also made finalization an explicit end to this bounded replay, removed unused policy parameters, made reversal dispatch explicit, separated authorization endings from adjustments and post-settlement events, removed scale constants left by an older architecture draft, and renamed the project metadata to `account-ledger-core`.
+
+I ran all 84 correctness tests normally and with Python optimization enabled, replayed E1–E10 successfully, and confirmed that the separate known-limitation suite still has exactly its intended failure. Pyright was not installed in this environment, so I did not claim a new static-check result. I regenerated the architecture PDF as four A4 pages and 17,320 bytes, verified all five source links, and inspected every page at 180 DPI for clipping, overlap, and stale wording.

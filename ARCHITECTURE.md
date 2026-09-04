@@ -8,19 +8,19 @@ This core has one job: receive the supplied events, record what happened, and ca
 flowchart LR
     A[Event arrives] --> B[Policy decides]
     B --> C[Facts are validated]
-    C --> D[Batch is appended]
+    C --> D[Complete batches are appended]
     D --> E[Reports are calculated]
 ```
 
-An event is a request such as a credit, debit, authorization, settlement, or reversal. Policy decides whether the request is valid and what it should produce. The journal appends the complete result as one batch. Reports derive balances and authorization states from the stored facts.
+An event is a request such as a credit, debit, authorization, settlement, or reversal. Policy decides whether the request is valid and what it should produce. The journal appends validated facts in complete batches. Reports derive balances and authorization states from the stored facts.
 
 Three guarantees organize the implementation:
 
 - **Exact money:** AED is stored in hundredths and BHD in thousandths. Currency arithmetic uses integers, never binary floating point.
 - **Permanent history:** an accepted fact is never edited or deleted. A correction adds a linked opposite fact.
-- **All or nothing:** a batch is returned only when every fact and relationship in it is valid.
+- **All or nothing:** every journal batch is appended completely, or not appended at all.
 
-“All or nothing” currently means one in-process function call. It does not mean the data survives a crash, and it does not protect two processes writing at the same time. Those are production guarantees, not claims made by this implementation.
+One event call may append two ordered batches: a prior-day fee batch, then the event-result batch. It exposes both, but has no durable transaction around the pair, crash survival, or protection from concurrent writers. Those are production guarantees, not claims made by this implementation.
 
 ### The boundary I chose
 
@@ -54,7 +54,7 @@ The next production step is one transactional database writer:
 - build balance checkpoints and indexes from measured queries; and
 - prove backup restoration before claiming durability.
 
-I would not start with Kafka, microservices, sharding, or multi-region writes. Those tools introduce new ordering and recovery problems before this workload proves that one database writer is insufficient. If later measurements require partitioning, one ordered owner per account is the natural next boundary. A transfer between two accounts would still need a separate guarantee that both sides succeed or both fail.
+I would not start with Kafka, microservices, sharding, or multi-region writes. Those tools introduce new ordering and recovery problems before this workload proves that one database writer is insufficient. Fee reconciliation must stay account-local so one account's policy failure cannot reject another account's event. If later measurements require partitioning, one ordered owner per account is the natural next boundary. A transfer between two accounts would still need a separate guarantee that both sides succeed or both fail.
 
 ## Value-dated entries in production
 
@@ -81,14 +81,15 @@ Until those steps succeed, the issued result stays unchanged. This prevents an u
 
 An authorization is a reservation, not a debit. It reduces the amount still available to spend. Settlement is the later event that actually removes money and releases any unused reservation.
 
-The current model supports approval, decline, and one final settlement. A decline is already final because it creates no hold. Once a hold is approved, however, this model has no ending other than settlement. A production system must represent the other endings explicitly:
+The current model supports approval, decline, and one final settlement. A decline ends the request before a hold exists. An approved hold has no non-settlement ending here. Production must add:
 
 <!-- VISUAL: authorization -->
 
-- **Expire:** no charge arrives before the deadline; release the hold once.
-- **Void or reduce:** the purchase is cancelled, duplicated, or becomes cheaper; authenticate the instruction, record the reason, and release the exact amount.
-- **Unknown result:** the caller loses the response while settlement may have succeeded; look up and reconcile the stored result before retrying or releasing anything.
-- **Refund or chargeback:** money has already settled and must move back; append a new linked credit instead of reopening the old hold.
+- **Expire:** the deadline passes without a charge; append an expiry and release the remaining hold once.
+- **Void or cancel:** the purchase is cancelled or duplicated; append the authenticated instruction and release the remaining hold once.
+- **Authorization reversal:** the merchant or network says the approval will not be used; append a linked reversal and release the remaining hold once.
+
+Each ending is idempotent, and a later settlement against that ended hold is rejected. Amount changes and partial releases adjust an active hold; they do not end it. An unknown result is not an ending: reconcile the stored result before changing the hold. A refund or chargeback happens after settlement and adds a linked money movement instead of changing the old hold.
 
 ## What I cut and why
 
@@ -115,7 +116,8 @@ Those are the accounting guarantees. Production safety adds immutable posted ent
 - **No persistence:** fine for a six-day replay; production needs a durable append and restore tests.
 - **No FX:** the supplied accounts never exchange currencies; production FX needs a sourced rate, quote time, rounding rule, and gain or loss treatment.
 - **Integer days:** deterministic here; production needs real dates and timestamps, business calendars, cut-off rules, and explicit period status.
-- **One final authorization capture:** enough here; production needs tested transitions for expiry, change, partial capture, dispute, and refund.
+- **One final window:** capitalization ends this replay; production needs recurring period close and controlled late correction.
+- **One final authorization capture:** enough here; production needs tested expiry, void, reversal, adjustment, and partial-capture transitions. Refunds and disputes belong after settlement.
 - **Trusted function calls:** authentication is out of scope; production needs actor identity, authorization, audit evidence, and controlled delivery.
 - **One global sequence:** fine here; production must measure its limit before adding ordered account ownership without breaking transfers.
 

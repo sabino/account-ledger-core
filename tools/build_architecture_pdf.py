@@ -414,7 +414,7 @@ def authorization_visual(styles: dict[str, ParagraphStyle]) -> Table:
     outcomes = [
         Paragraph("<b>NO</b> - Declined. No hold; this path ends.", styles["visual_body"]),
         Paragraph(
-            "<b>YES</b> - Approved hold, then settle, expire, or void.",
+            "<b>YES</b> - Approved hold; later settle or end by expiry, void, or reversal.",
             styles["visual_body"],
         ),
     ]
