@@ -26,6 +26,7 @@ func (s *Store) Seed(ctx context.Context) error {
 			{"settlement", "asset", "Simulated settlement asset"},
 			{"fees", "income", "Fee income"},
 			{"interest", "expense", "Interest expense"},
+			{"tax", "liability", "Illustrative tax payable (synthetic)"},
 		} {
 			err = queries.CreateAccount(ctx, db.CreateAccountParams{
 				RunID: "demo", ID: account.id + "-" + currency, Name: account.name,

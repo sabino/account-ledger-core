@@ -39,6 +39,16 @@ Continuous virtual-day transitions, external reconciliation, a network delivery 
 
 The Go fixture retains the supplied numbers, not the Python journal positions. Each balanced batch includes its counterpart postings. Prior-day maintenance and the triggering event are separate batches inside one database transaction, so readers cannot observe the intermediate maintenance batch before that transaction commits.
 
+## Scenario mix and calculation evidence
+
+The live generator now uses a reproducible twelve-step recipe, alternating AED and BHD between groups: a fractional transfer, insufficient funds, invalid precision, a hold, final partial capture, duplicate capture, unknown authorization, currency mismatch, a three-part transfer split, two illustrative tax rounding ties, and an exact retry of the first command. Outcomes depend on actual account state; the tests establish the expected outcomes from a known funded setup. The retry advances the generator cursor but does not append another monetary batch.
+
+`split_transfer` allocates a total across postings on the same value date. BHD 10.000 becomes 3.334 + 3.333 + 3.333. This is not a dated repayment schedule. `purchase` interprets the requested amount as net, applies an explicitly synthetic 1/20 tax rate with half-even rounding per purchase, and debits the gross amount while crediting the merchant's deposit liability and a separate illustrative tax-payable liability. It is not a tax-compliance implementation. The stored calculation includes the rate, rule label, net, tax, gross, and rounding method.
+
+New evaluated outcomes retain the locked account's balance, held amount, available amount, and requested amount alongside the command, policy, processing instance, and resulting legs. Invalid inputs can be rejected before that evidence exists. Existing immutable batches are not retroactively enriched. HTTP attempt/correlation history and network delivery-attempt tracing remain separate pending audit work.
+
+When changing generator recipes, pause generation and let admitted work drain before updating replicas. Resume only when both run the new version. A fenced, versioned generator lease remains pending; a mixed-version rolling generator is not currently supported safely.
+
 ## Code and queries
 
 `internal/domain` owns exact money functions. `internal/store` owns explicit transactions. Named SQL lives under `queries/`; `sqlc` generates `internal/db`. Do not edit generated files. Numbered SQL migrations live under `internal/store/migrations`; Goose records applied versions and takes a PostgreSQL migration lock. The dedicated migration command, not the HTTP server, runs them.

@@ -79,6 +79,12 @@ func (s *Store) Process(ctx context.Context, runID string, command Command) (Res
 				return Result{}, err
 			}
 		}
+		source := accounts[command.Account]
+		available, availableErr := domain.Add(source.Balance, -source.Held)
+		if availableErr != nil {
+			return Result{}, availableErr
+		}
+		result.Decision = &DecisionEvidence{Balance: source.Balance, Held: source.Held, Available: available, Requested: amount}
 		if err = decide(ctx, queries, runID, command, amount, accounts, &result); err != nil {
 			return Result{}, err
 		}
@@ -114,8 +120,10 @@ func (s *Store) Process(ctx context.Context, runID string, command Command) (Res
 func lockAccounts(ctx context.Context, queries *db.Queries, runID string, command Command, profile string, result *Result) (map[string]*db.Account, error) {
 	ids := []string{command.Account}
 	switch command.Kind {
-	case "transfer":
+	case "transfer", "split_transfer":
 		ids = append(ids, command.Destination)
+	case "purchase":
+		ids = append(ids, command.Destination, "tax-"+command.Currency)
 	case "credit", "debit", "capture", "reversal":
 		ids = append(ids, "settlement-"+command.Currency)
 	case "hold":
@@ -145,7 +153,7 @@ func lockAccounts(ctx context.Context, queries *db.Queries, runID string, comman
 	if source := accounts[command.Account]; source != nil && !source.Customer {
 		result.reject("source must be a customer account")
 	}
-	if command.Kind == "transfer" {
+	if command.Kind == "transfer" || command.Kind == "split_transfer" || command.Kind == "purchase" {
 		destination := accounts[command.Destination]
 		if command.Account == command.Destination || destination != nil && !destination.Customer {
 			result.reject("choose two different customer accounts")
@@ -188,6 +196,8 @@ func decide(ctx context.Context, queries *db.Queries, runID string, command Comm
 			destination = "settlement-" + command.Currency
 		}
 		result.Legs = movement(command.Account, destination, command.Currency, amount, command.ValueDay, command.Kind)
+	case "purchase", "split_transfer":
+		return decideIllustration(command, amount, source, result)
 	case "hold":
 		return createHold(ctx, queries, runID, command, amount, source, result)
 	case "capture":

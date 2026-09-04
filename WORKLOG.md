@@ -273,3 +273,11 @@ The separate `ledger-budget` project started all eight runtime services with mem
 The subsequent short experiment committed 619 batches, read the fixture repeatedly through ClickHouse, and finished with successful reconciliation. No container restarted or reported an OOM kill. The requested 20/sec boost returned to baseline automatically; the test does not claim sustained 20/sec throughput. Sampled memory observations and exact limits are recorded in `deploy/local/BUDGET.md`.
 
 The production host still had only 1,631 MiB available in a read-only check. Adding a 512 MiB reserve to these ceilings exceeds that headroom, so this is not deployment approval. Codex performed the experiment locally. No production service was changed, and the main local dashboard remained on port 8088.
+
+### 20:24:00 — Act · Make the simulation exercise failures and exact calculations
+
+The live recipe now alternates AED and BHD groups and includes fractional transfers, insufficient funds, invalid precision, holds, final partial capture, duplicate capture, unknown authorization, currency mismatch, a three-part transfer split, illustrative tax rounding ties, and an identical retry. New evaluated outcomes retain the locked balance, holds, availability, and requested amount. Tax examples retain net, tax, gross, exact rate, and rounding rule in the immutable envelope.
+
+The tax rate is a synthetic 1/20 example, not jurisdictional tax policy. The split uses one value date, not a repayment schedule. Tests verify both half-even ties, the capture/release amounts, rejection without monetary legs, exact retry behavior, and BHD 3.334 + 3.333 + 3.333. The race-enabled database suite passed, including the supplied six-day example. Earlier journal records and the submitted Python/PDF are unchanged.
+
+Codex paused local generation before switching the two replicas to the new recipe, then resumed at one command per second. Reconciliation returned zero differences. A mixed-version generator rollout is not safe yet without that pause; fenced recipe ownership remains pending. Full HTTP attempt/correlation history and a visual inspector are also still pending. This step improves stored decision evidence rather than claiming the complete audit feature is done.

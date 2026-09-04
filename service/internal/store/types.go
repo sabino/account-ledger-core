@@ -47,18 +47,37 @@ type Leg struct {
 }
 
 type Result struct {
-	ID       string          `json:"id"`
-	Status   string          `json:"status"`
-	Reason   string          `json:"reason,omitempty"`
-	Sequence int64           `json:"sequence,string"`
-	Instance string          `json:"instance"`
-	Kind     string          `json:"kind"`
-	Legs     []Leg           `json:"legs"`
-	Captured int64           `json:"captured,string"`
-	Released int64           `json:"released,string"`
-	Accruals []Accrual       `json:"accruals,omitempty"`
-	Policy   json.RawMessage `json:"policy"`
-	Command  *Command        `json:"command,omitempty"`
+	Decision    *DecisionEvidence `json:"decision,omitempty"`
+	Calculation *Calculation      `json:"calculation,omitempty"`
+	ID          string            `json:"id"`
+	Status      string            `json:"status"`
+	Reason      string            `json:"reason,omitempty"`
+	Sequence    int64             `json:"sequence,string"`
+	Instance    string            `json:"instance"`
+	Kind        string            `json:"kind"`
+	Legs        []Leg             `json:"legs"`
+	Captured    int64             `json:"captured,string"`
+	Released    int64             `json:"released,string"`
+	Accruals    []Accrual         `json:"accruals,omitempty"`
+	Policy      json.RawMessage   `json:"policy"`
+	Command     *Command          `json:"command,omitempty"`
+}
+
+type DecisionEvidence struct {
+	Balance   int64 `json:"balance_before,string"`
+	Held      int64 `json:"held_before,string"`
+	Available int64 `json:"available_before,string"`
+	Requested int64 `json:"requested_minor,string"`
+}
+
+type Calculation struct {
+	Policy      string `json:"policy"`
+	Net         int64  `json:"net,string"`
+	Tax         int64  `json:"tax,string"`
+	Gross       int64  `json:"gross,string"`
+	Numerator   int64  `json:"numerator"`
+	Denominator int64  `json:"denominator"`
+	Rounding    string `json:"rounding"`
 }
 
 type Accrual struct {

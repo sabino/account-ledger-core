@@ -73,6 +73,11 @@ func Add(a, b int64) (int64, error) {
 }
 
 func Interest(balance, numerator, denominator int64) (int64, error) {
+	return RoundRatio(balance, numerator, denominator)
+}
+
+// RoundRatio applies exact nonnegative rational arithmetic and half-even rounding.
+func RoundRatio(balance, numerator, denominator int64) (int64, error) {
 	if numerator < 0 || denominator <= 0 {
 		return 0, errors.New("invalid rate")
 	}
@@ -87,7 +92,7 @@ func Interest(balance, numerator, denominator int64) (int64, error) {
 		q.Add(q, big.NewInt(1))
 	}
 	if !q.IsInt64() {
-		return 0, errors.New("interest overflow")
+		return 0, errors.New("rounded amount overflow")
 	}
 	return q.Int64(), nil
 }

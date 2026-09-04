@@ -51,21 +51,7 @@ func (s *Store) Generate(ctx context.Context) error {
 	if err = s.Admit(ctx); err != nil {
 		return err
 	}
-	source, destination := int(ordinal%20)+1, int((ordinal*7+3)%20)+1
-	if destination == source {
-		destination = destination%20 + 1
-	}
-	currency := "AED"
-	if ordinal%2 == 1 {
-		source += 20
-		destination += 20
-		currency = "BHD"
-	}
-	_, err = s.Process(ctx, "demo", Command{
-		ID: fmt.Sprintf("generated-%010d", ordinal), Kind: "transfer",
-		Account: fmt.Sprintf("ACC-%03d", source), Destination: fmt.Sprintf("ACC-%03d", destination),
-		Currency: currency, Amount: fmt.Sprintf("%d.00", ordinal%9+1), BookedDay: 1, ValueDay: 1,
-	})
+	_, err = s.Process(ctx, "demo", GeneratedCommand(ordinal))
 	if err != nil {
 		return err
 	}

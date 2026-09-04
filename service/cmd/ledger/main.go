@@ -152,7 +152,7 @@ func main() {
 			return
 		}
 		// Public live surface cannot mint funds or invoke assessment overdraft rules.
-		if c.Kind != "transfer" && c.Kind != "hold" && c.Kind != "capture" {
+		if c.Kind != "transfer" && c.Kind != "hold" && c.Kind != "capture" && c.Kind != "purchase" && c.Kind != "split_transfer" {
 			w.WriteHeader(400)
 			return
 		}
