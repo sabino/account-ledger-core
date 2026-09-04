@@ -15,7 +15,39 @@ type Outcome = {
   sequence: string;
   instance: string;
   legs: Leg[];
+  command?: {
+    currency: string;
+    account: string;
+    destination?: string;
+    amount?: string;
+  };
+  decision?: {
+    balance_before: string;
+    held_before: string;
+    available_before: string;
+    requested_minor: string;
+  };
+  calculation?: {
+    policy: string;
+    net: string;
+    tax: string;
+    gross: string;
+    numerator: number;
+    denominator: number;
+    rounding: string;
+  };
+  captured?: string;
+  released?: string;
+  policy?: unknown;
 };
+type JournalRow = {
+  at: string;
+  booked_day: number;
+  value_day: number;
+  result: Outcome;
+};
+let journalRows: JournalRow[] = [];
+let selectedEvent: JournalRow | undefined;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 let accounts: Account[] = [];
@@ -101,6 +133,7 @@ async function journal() {
     "journal?account=" +
       encodeURIComponent($<HTMLSelectElement>("statement").value),
   );
+  journalRows = rows;
   $("journal").innerHTML = rows
     .map((row: any) => {
       const r: Outcome = row.result;
@@ -114,10 +147,128 @@ async function journal() {
               `${esc(l.account)}<small>${money((BigInt(l.units) < 0n ? -BigInt(l.units) : BigInt(l.units)).toString(), l.currency)}</small>`,
           )
           .join("<br>") || "—";
-      return `<tr><td>#${r.sequence}<small>${new Date(row.at).toLocaleTimeString()}</small></td><td>${esc(r.kind)}<small>${esc(r.id)}</small></td><td class="${esc(r.status)}">${esc(r.status)}<small>${esc(r.reason || "")}</small></td><td>${legs(true)}</td><td>${legs(false)}</td><td>${esc(r.instance)}</td></tr>`;
+      return `<tr class="${selectedEvent?.result.sequence === r.sequence ? "selected-event" : ""}"><td><button class="inspect-event" data-sequence="${esc(r.sequence)}" aria-label="Inspect ${esc(r.id)}" aria-pressed="${selectedEvent?.result.sequence === r.sequence}">#${r.sequence}</button><small>${new Date(row.at).toLocaleTimeString()}</small></td><td>${esc(r.kind)}<small>${esc(r.id)}</small></td><td class="${esc(r.status)}">${esc(r.status)}<small>${esc(r.reason || "")}</small></td><td>${legs(true)}</td><td>${legs(false)}</td><td>${esc(r.instance)}</td></tr>`;
     })
     .join("");
 }
+function inspectEvent(row: JournalRow) {
+  selectedEvent = row;
+  const r = row.result;
+  const panel = $("event-inspector");
+  panel.replaceChildren();
+  const line = (tag: string, value: string, className = "") => {
+    const element = document.createElement(tag);
+    element.textContent = value;
+    element.className = className;
+    panel.append(element);
+    return element;
+  };
+  line("p", "WHY THIS HAPPENED", "eyebrow");
+  line("h3", `${r.kind} · ${r.status}`, r.status);
+  line(
+    "p",
+    r.reason ||
+      (r.legs.length
+        ? "The monetary entries were recorded together."
+        : "No monetary posting. This decision is still recorded."),
+  );
+  if (r.status !== "accepted") line("strong", "No money moved", "no-movement");
+  const facts = document.createElement("dl");
+  facts.className = "decision-facts";
+  panel.append(facts);
+  const fact = (name: string, value: string) => {
+    const label = document.createElement("dt"),
+      content = document.createElement("dd");
+    label.textContent = name;
+    content.textContent = value;
+    facts.append(label, content);
+  };
+  fact("Command", r.id);
+  fact("Journal batch", `#${r.sequence}`);
+  fact("Processing replica", r.instance);
+  fact("Recorded at", new Date(row.at).toLocaleString());
+  fact("Booking / value day", `${row.booked_day} / ${row.value_day}`);
+  const currency = r.command?.currency;
+  if (r.decision && currency) {
+    fact("Balance before", money(r.decision.balance_before, currency));
+    fact("Reserved before", money(r.decision.held_before, currency));
+    fact("Available before", money(r.decision.available_before, currency));
+    if (r.kind !== "reversal")
+      fact("Amount checked", money(r.decision.requested_minor, currency));
+  } else {
+    line(
+      "p",
+      "Pre-decision balance evidence was not recorded for this batch. It may predate this feature or have failed input validation.",
+      "note",
+    );
+  }
+  if (r.calculation && currency) {
+    const c = r.calculation;
+    line("h4", "Illustrative tax · synthetic rule");
+    line(
+      "p",
+      `${money(c.net, currency)} net + ${money(c.tax, currency)} tax = ${money(c.gross, currency)} gross`,
+      "calculation",
+    );
+    line(
+      "p",
+      `Rate ${c.numerator}/${c.denominator}. ${c.rounding}. ${c.policy}. Not tax-compliance advice.`,
+      "note",
+    );
+  }
+  if (r.kind === "capture" && currency && r.status === "accepted") {
+    line(
+      "p",
+      `${money(r.captured || "0", currency)} captured · ${money(r.released || "0", currency)} released`,
+    );
+  }
+  if (r.kind === "split_transfer")
+    line(
+      "p",
+      "Parts share one value date. Extra minor units go to the first parts; nothing is discarded.",
+      "note",
+    );
+  line("h4", "Accounting entries");
+  for (const leg of r.legs) {
+    const units = BigInt(leg.units);
+    line(
+      "p",
+      `${units > 0n ? "Debit" : "Credit"} ${leg.account} · ${money((units < 0n ? -units : units).toString(), leg.currency)}`,
+      "entry-line",
+    );
+  }
+  if (!r.legs.length) line("p", "No monetary legs.");
+  const details = document.createElement("details");
+  const summary = document.createElement("summary"),
+    raw = document.createElement("pre");
+  summary.textContent = "Stored evidence";
+  raw.textContent = JSON.stringify(row, null, 2);
+  details.append(summary, raw);
+  panel.append(details);
+  line(
+    "p",
+    "This is journal evidence, not a complete HTTP-attempt history. Identical retries return the original outcome without another monetary batch.",
+    "note",
+  );
+}
+$("journal").addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-sequence]",
+  );
+  const row = journalRows.find(
+    (row) => row.result.sequence === button?.dataset.sequence,
+  );
+  if (row) {
+    inspectEvent(row);
+    $("journal")
+      .querySelectorAll<HTMLButtonElement>("button[data-sequence]")
+      .forEach((element) => {
+        const selected = element.dataset.sequence === row.result.sequence;
+        element.setAttribute("aria-pressed", String(selected));
+        element.closest("tr")?.classList.toggle("selected-event", selected);
+      });
+  }
+});
 async function refresh() {
   try {
     const [status, list] = await Promise.all([api("status"), api("accounts")]);
@@ -133,9 +284,11 @@ async function refresh() {
       $<HTMLInputElement>("eps").value = String(status.eps);
       $("rate").textContent = String(status.eps);
     }
-    $("guard").textContent = status.guard_fresh
-      ? "Within DB budget"
-      : status.guard_reason || "Guard stale";
+    $("guard").textContent = !status.host_guard?.safe
+      ? status.host_guard?.reason || "Host safety lease stale"
+      : status.guard_fresh
+        ? "Host + DB checks clear"
+        : status.guard_reason || "DB guard stale";
     $("replicas").innerHTML = status.replicas
       .map(
         (r: any) =>

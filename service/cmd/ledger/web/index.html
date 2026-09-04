@@ -125,7 +125,7 @@
         <div class="section-heading">
           <div>
             <p class="eyebrow">THE AUDIT TRAIL</p>
-            <h2>Every decision leaves a trace.</h2>
+            <h2>Inspect a recorded decision.</h2>
           </div>
           <label class="filter"
             >Statement
@@ -134,20 +134,34 @@
             </select></label
           >
         </div>
-        <div class="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Sequence / time</th>
-                <th>Command</th>
-                <th>Outcome</th>
-                <th>Debit (+)</th>
-                <th>Credit (−)</th>
-                <th>Instance</th>
-              </tr>
-            </thead>
-            <tbody id="journal"></tbody>
-          </table>
+        <div class="audit-layout">
+          <div class="table-scroll journal-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Sequence / time</th>
+                  <th>Command</th>
+                  <th>Outcome</th>
+                  <th>Debit (+)</th>
+                  <th>Credit (−)</th>
+                  <th>Instance</th>
+                </tr>
+              </thead>
+              <tbody id="journal"></tbody>
+            </table>
+          </div>
+          <aside
+            id="event-inspector"
+            class="event-inspector"
+            aria-label="Selected event details"
+          >
+            <p class="eyebrow">WHY THIS HAPPENED</p>
+            <h3>Select a batch number</h3>
+            <p>
+              Inspect the outcome, available funds, rounding calculation, and
+              accounting entries from the same recorded event.
+            </p>
+          </aside>
         </div>
         <p class="note">
           Bank-side debit/credit signs are not customer balance signs. Customer
