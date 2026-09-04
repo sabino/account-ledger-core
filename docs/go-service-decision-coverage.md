@@ -1,6 +1,20 @@
 # Decision coverage for the Go service
 
-Status: planned demonstrations and tests, not existing functionality. Companion to [the implementation plan](go-service-plan.md). The Python assessment and submitted PDF remain historical evidence; this matrix records preserved behavior, explicit extensions and deferred work.
+Status: the matrices below describe target coverage, not blanket completion. The checked local evidence is listed separately here. Companion to [the implementation plan](go-service-plan.md). The Python assessment and submitted PDF remain historical evidence; this matrix records preserved behavior, explicit extensions and deferred work.
+
+## Checked local evidence
+
+| Scope | Executable evidence | Limits |
+| --- | --- | --- |
+| Supplied six-day numbers, fee timing, capture/release, reversal and capitalization | `service/internal/store/integration_test.go`, `TestSixDayFixture` | Go batch positions differ from Python commits; not general differential testing |
+| Competing writes and retries | Other integration tests in that file | Two independent database connections; not a network-partition experiment |
+| Arbitrary transfers | `service/internal/store/arbitrary_test.go` | 500 seeded transfers against a separate balance model; not all command kinds |
+| Host lease safety | `service/internal/hostguard/guard_test.go`, `service/internal/store/watchdog_test.go`, `service/tests/guard-smoke.mjs` | Local expiry and role-boundary checks; VPS calibration remains pending |
+| HTTP retry and delivery pause | `service/tests/http-smoke.mjs` | Current inbox is in the same database, not a network sink |
+| Lake read-back | `deploy/local/lake/verify.sql`, local observations in WORKLOG | All 12 fixture batches and counterpart totals; graceful CDC restart only |
+| Logical backup/restore | `service/tests/backup-restore.mjs` | Local API writers paused, same cluster roles, no slots/lake/PITR recovery |
+
+These checks passed locally as recorded in WORKLOG. GitHub CI, VPS deployment, visual coverage of every decision, and the remaining target exercises below are not thereby proven.
 
 ## Ambiguities
 

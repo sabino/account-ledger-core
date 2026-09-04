@@ -73,3 +73,13 @@ docker compose start watchdog
 ```
 
 The check leaves generation paused. Resume it from the dashboard after the watcher reports safe. It does not restart or reconfigure any service outside this Compose project.
+
+## Local backup/restore drill
+
+```bash
+node service/tests/backup-restore.mjs
+```
+
+Run from the repository root with access to the local Docker socket. This briefly stops the two API containers, takes a custom-format PostgreSQL backup in memory, restores it into a newly named disposable database, and compares all rows in 12 financial/delivery tables by SHA-256 fingerprints. It also checks batch balancing and the restored runtime role's lack of journal mutation and host-lease update privileges. Cleanup removes only the new restore database and restarts the API containers.
+
+This is not an online backup consistency test, an off-host backup, point-in-time recovery, or a measured production RTO. It reuses the existing cluster roles and does not restore replication slots or the object store. The drill must not be run while someone needs uninterrupted access to the local dashboard.

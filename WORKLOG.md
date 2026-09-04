@@ -259,3 +259,9 @@ The local stack now has a separate, resource-capped watcher. It reads memory ava
 I stopped the local watcher and waited for expiry. HTTP requests reached both replicas and were denied, rate increases and chaos were denied, the journal position stayed unchanged, and setting the rate to zero still worked. The watcher was then restarted. Unit tests, vet, and the race-enabled database suite passed. Codex implemented and ran this check with my authorization, and the worklog keeps that assistance explicit.
 
 This is admission control, not a promise that every container stops consuming resources when pressure rises. Already-admitted work can finish, and background components still need their own enforced budgets. Thresholds are local defaults pending VPS calibration. No production workload was changed.
+
+### 20:09:00 — Check · Restore a local backup and compare the actual records
+
+The recovery drill briefly stopped only the two local API containers, took a 703,072-byte custom-format PostgreSQL backup, and restored it into a newly created disposable database. SHA-256 fingerprints matched all rows in 12 financial and delivery tables. The restored journal had no unbalanced batches, and the runtime role still lacked journal update, posting delete, and host-lease update permissions. Restore plus verification took about 6.3 seconds for this small dataset; that is not a production recovery-time estimate.
+
+The disposable database was removed and both API containers returned healthy. The source database was not replaced or erased. This test reuses cluster roles, pauses writers, and does not recover replication slots, Iceberg storage, or an entire lost host. Those remain separate tests. Codex implemented and ran the drill with my authorization. I also separated checked local evidence from planned coverage in the decision matrix.
