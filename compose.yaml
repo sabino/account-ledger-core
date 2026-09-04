@@ -19,6 +19,35 @@ x-app: &app
     timeout: 3s
     retries: 5
 services:
+  watch-setup:
+    image: postgres:18.3-bookworm@sha256:80630f83606d8db77d30b3851b16a9f78be2d0d4dda6f7b82a1fdca5ebe3acba
+    environment: {PGPASSWORD: local-owner-only}
+    volumes: ["./deploy/local/watch-role.sql:/watch-role.sql:ro"]
+    command: [psql, -v, ON_ERROR_STOP=1, -h, postgres, -U, ledger_owner, -d, ledger, -f, /watch-role.sql]
+    depends_on: {migrate: {condition: service_completed_successfully}}
+    mem_limit: 64m
+    cpus: 0.1
+    restart: "no"
+  watchdog:
+    <<: *app
+    command: [watch]
+    environment:
+      DATABASE_URL: "postgres://ledger_watch:local-watch-only@postgres:5432/ledger?sslmode=disable"
+      INSTANCE_ID: host-watchdog
+      WATCH_PROC_DIR: /hostproc
+      WATCH_DISK_PATH: /watched-disk
+      GOMEMLIMIT: 24MiB
+    volumes:
+      - /proc/meminfo:/hostproc/meminfo:ro
+      - /proc/vmstat:/hostproc/vmstat:ro
+      - /proc/pressure/memory:/hostproc/pressure/memory:ro
+      - /proc/pressure/io:/hostproc/pressure/io:ro
+      - pgdata:/watched-disk:ro
+    depends_on: {watch-setup: {condition: service_completed_successfully}}
+    mem_limit: 48m
+    memswap_limit: 48m
+    cpus: 0.05
+    healthcheck: {disable: true}
   lake:
     image: chrislusf/seaweedfs:4.45@sha256:fc9f76fa993ad69966ffeb2f65d0318fcae39c6f8e20cf68ef7b3a5cb97769e5
     profiles: [lake]

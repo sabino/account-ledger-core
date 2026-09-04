@@ -59,6 +59,14 @@ type Hold struct {
 	ValueDay  int32  `json:"value_day"`
 }
 
+type HostGuard struct {
+	ID         bool               `json:"id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+	SafeUntil  pgtype.Timestamptz `json:"safe_until"`
+	Reason     string             `json:"reason"`
+	Evidence   []byte             `json:"evidence"`
+}
+
 type JournalBatch struct {
 	RunID     string             `json:"run_id"`
 	Sequence  int64              `json:"sequence"`

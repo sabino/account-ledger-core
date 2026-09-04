@@ -2,10 +2,13 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"runtime"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/sabino/account-ledger-core/service/internal/db"
 )
 
@@ -116,6 +119,17 @@ func (s *Store) Workers(ctx context.Context) {
 }
 
 func (s *Store) Status(ctx context.Context) (map[string]any, error) {
+	host := map[string]any{"safe": false, "reason": "host watcher not initialized"}
+	guard, guardErr := s.Queries.HostGuardStatus(ctx)
+	if guardErr == nil {
+		var evidence any
+		if err := json.Unmarshal(guard.Evidence, &evidence); err != nil {
+			return nil, err
+		}
+		host = map[string]any{"safe": guard.Safe, "reason": guard.Reason, "observed_at": guard.ObservedAt.Time, "evidence": evidence}
+	} else if !errors.Is(guardErr, pgx.ErrNoRows) {
+		return nil, guardErr
+	}
 	state, err := s.Queries.SimulationStatus(ctx)
 	if err != nil {
 		return nil, err
@@ -134,14 +148,21 @@ func (s *Store) Status(ctx context.Context) (map[string]any, error) {
 		"pause_reason": state.PauseReason, "guard_fresh": state.Fresh,
 		"pending_deliveries": state.Pending, "database_bytes": state.DatabaseBytes,
 		"replicas": replicas, "serving_instance": s.Instance, "cdc": "not implemented",
-		"profile": "continuous transfers; separate six-day assessment replay"}, nil
+		"host_guard": host, "profile": "continuous transfers; separate six-day assessment replay"}, nil
 }
 
 func (s *Store) SetRate(ctx context.Context, eps int32) error {
 	if eps < 0 || eps > 20 {
 		return ErrCapacity
 	}
-	return s.Queries.SetRate(ctx, eps)
+	changed, err := s.Queries.SetRate(ctx, eps)
+	if err != nil {
+		return err
+	}
+	if changed == 0 {
+		return ErrCapacity
+	}
+	return nil
 }
 
 func (s *Store) PauseOutbox(ctx context.Context) error {

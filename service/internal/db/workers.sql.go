@@ -41,6 +41,7 @@ UPDATE controls SET
     THEN budget_used + 1 ELSE 1 END,
   budget_second = floor(extract(epoch FROM clock_timestamp()))::bigint
 WHERE run_id = 'demo' AND pause_reason = '' AND guard_until > now()
+  AND EXISTS (SELECT FROM host_guard WHERE id AND safe_until > now())
   AND (budget_second <> floor(extract(epoch FROM clock_timestamp()))::bigint OR budget_used < 20)
   AND (SELECT position FROM journal_clock WHERE run_id = 'demo') < 100000
 `
@@ -163,6 +164,7 @@ func (q *Queries) NextGeneratedCommand(ctx context.Context) (int64, error) {
 const pauseOutbox = `-- name: PauseOutbox :execrows
 UPDATE controls SET outbox_pause_until = now() + interval '15 seconds'
 WHERE run_id = 'demo' AND (outbox_pause_until IS NULL OR outbox_pause_until < now() - interval '45 seconds')
+ AND EXISTS (SELECT FROM host_guard WHERE id AND safe_until > now())
 `
 
 func (q *Queries) PauseOutbox(ctx context.Context) (int64, error) {
@@ -184,14 +186,18 @@ func (q *Queries) RefreshGuard(ctx context.Context, reason string) error {
 	return err
 }
 
-const setRate = `-- name: SetRate :exec
+const setRate = `-- name: SetRate :execrows
 UPDATE controls SET eps = $1, boost_until = CASE WHEN $1 > 1
   THEN now() + interval '60 seconds' ELSE NULL END WHERE run_id = 'demo'
+  AND ($1 = 0 OR EXISTS (SELECT FROM host_guard WHERE id AND safe_until > now()))
 `
 
-func (q *Queries) SetRate(ctx context.Context, eps int32) error {
-	_, err := q.db.Exec(ctx, setRate, eps)
-	return err
+func (q *Queries) SetRate(ctx context.Context, eps int32) (int64, error) {
+	result, err := q.db.Exec(ctx, setRate, eps)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const simulationStatus = `-- name: SimulationStatus :one

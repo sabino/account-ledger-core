@@ -44,6 +44,14 @@ func main() {
 		log.Fatal(e)
 	}
 	defer db.Pool.Close()
+	if len(os.Args) > 1 && os.Args[1] == "watch" {
+		proc, disk := os.Getenv("WATCH_PROC_DIR"), os.Getenv("WATCH_DISK_PATH")
+		if proc == "" || disk == "" {
+			log.Fatal("watcher requires explicit host metric and disk paths")
+		}
+		db.WatchHost(ctx, proc, disk)
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
 		if e = db.Migrate(ctx); e != nil {
 			log.Fatal(e)
@@ -152,16 +160,19 @@ func main() {
 		reply(w, v, e)
 	})
 	mux.HandleFunc("POST /api/controls", func(w http.ResponseWriter, r *http.Request) {
-		if e := db.Admit(r.Context()); e != nil {
-			reply(w, nil, e)
-			return
-		}
 		var c struct {
 			EPS int `json:"eps"`
 		}
 		if e := decode(w, r, &c); e != nil || c.EPS < 0 || c.EPS > 20 {
 			w.WriteHeader(400)
 			return
+		}
+		// Stopping generation must remain possible when safety admission is closed.
+		if c.EPS > 0 {
+			if e := db.Admit(r.Context()); e != nil {
+				reply(w, nil, e)
+				return
+			}
 		}
 		e := db.SetRate(r.Context(), int32(c.EPS))
 		reply(w, map[string]int{"eps": c.EPS}, e)

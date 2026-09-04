@@ -251,3 +251,11 @@ This remains local. SeaweedFS mini mode sizes its volume allowance from free dis
 ### 20:01:00 — Check · Compare arbitrary transfers with a separate model
 
 A seeded integration test now sends 500 arbitrary transfers through alternating service connections. It includes insufficient-funds outcomes and repeats every seventh command through the other connection. After every request, it compares the account balances with a separate conservation-and-availability model; final journal reconciliation must also pass. The race-enabled test passed. The fixed seed makes failures reproducible, not exhaustive. This adds coverage beyond E1–E10 without changing the supplied fixture or claiming all ledger behaviors are covered.
+
+### 20:06:00 — Check · Stop admission when the independent host watcher disappears
+
+The local stack now has a separate, resource-capped watcher. It reads memory availability, memory and IO pressure, swap activity, and filesystem free space through read-only mounts, without a Docker socket. A dedicated database role publishes an eight-second safety lease. The API role can read it but cannot renew it; an application-role test verifies that permission boundary.
+
+I stopped the local watcher and waited for expiry. HTTP requests reached both replicas and were denied, rate increases and chaos were denied, the journal position stayed unchanged, and setting the rate to zero still worked. The watcher was then restarted. Unit tests, vet, and the race-enabled database suite passed. Codex implemented and ran this check with my authorization, and the worklog keeps that assistance explicit.
+
+This is admission control, not a promise that every container stops consuming resources when pressure rises. Already-admitted work can finish, and background components still need their own enforced budgets. Thresholds are local defaults pending VPS calibration. No production workload was changed.

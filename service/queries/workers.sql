@@ -4,6 +4,7 @@ UPDATE controls SET
     THEN budget_used + 1 ELSE 1 END,
   budget_second = floor(extract(epoch FROM clock_timestamp()))::bigint
 WHERE run_id = 'demo' AND pause_reason = '' AND guard_until > now()
+  AND EXISTS (SELECT FROM host_guard WHERE id AND safe_until > now())
   AND (budget_second <> floor(extract(epoch FROM clock_timestamp()))::bigint OR budget_used < 20)
   AND (SELECT position FROM journal_clock WHERE run_id = 'demo') < 100000;
 
@@ -53,10 +54,12 @@ FROM controls c JOIN journal_clock j USING (run_id) WHERE c.run_id = 'demo';
 -- name: ListReplicas :many
 SELECT * FROM replica_heartbeats ORDER BY id LIMIT 10;
 
--- name: SetRate :exec
+-- name: SetRate :execrows
 UPDATE controls SET eps = $1, boost_until = CASE WHEN $1 > 1
-  THEN now() + interval '60 seconds' ELSE NULL END WHERE run_id = 'demo';
+  THEN now() + interval '60 seconds' ELSE NULL END WHERE run_id = 'demo'
+  AND ($1 = 0 OR EXISTS (SELECT FROM host_guard WHERE id AND safe_until > now()));
 
 -- name: PauseOutbox :execrows
 UPDATE controls SET outbox_pause_until = now() + interval '15 seconds'
-WHERE run_id = 'demo' AND (outbox_pause_until IS NULL OR outbox_pause_until < now() - interval '45 seconds');
+WHERE run_id = 'demo' AND (outbox_pause_until IS NULL OR outbox_pause_until < now() - interval '45 seconds')
+ AND EXISTS (SELECT FROM host_guard WHERE id AND safe_until > now());

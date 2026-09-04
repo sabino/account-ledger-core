@@ -29,6 +29,12 @@ jobs:
         run: |
           curl --fail http://localhost:8088/readyz
           curl --fail http://localhost:8088/api/reconciliation | jq -e '.ok == true'
+      - name: Verify expired host lease blocks both replicas
+        run: |
+          docker compose stop watchdog
+          sleep 10
+          node service/tests/guard-smoke.mjs
+          docker compose start watchdog
       - name: Stop only this job's Compose project
         if: always()
         run: docker compose down
