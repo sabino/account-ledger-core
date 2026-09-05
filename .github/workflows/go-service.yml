@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
 jobs:
-  local-stack:
+  compose-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -16,8 +16,10 @@ jobs:
         run: |
           make -C service generate
           git diff --exit-code -- service/internal/db
-      - name: Start local stack
-        run: docker compose up --build -d --wait
+      - name: Start Compose services and wait for HTTP/database readiness
+        run: |
+          docker compose up --build -d
+          docker compose up -d --wait postgres api-a api-b proxy
       - name: Formatting, static checks and unit tests
         run: |
           docker compose --profile test run --rm test-runner sh -c 'test -z "$(gofmt -l cmd internal)" && go vet ./... && go test -race ./...'
