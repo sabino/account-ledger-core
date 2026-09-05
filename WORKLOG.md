@@ -414,10 +414,16 @@ The first integration setup incorrectly used future days in the current live pro
 
 Both local APIs were rebuilt. The first HTTP traversal hit the existing proxy rate limit after finishing AED; the test now paces reads without changing that limit. The repeated test passed all 293 AED and 287 BHD posting lines at cutoff 9,945, including running balances, totals, page boundaries, zero cutoff and invalid query responses. CI now runs this HTTP check. The Accounts UI and exports are not yet wired to the endpoint. No financial behavior, submitted files or production workloads changed.
 
-### 23:27:00 — Add · Browse and export fixed-cutoff statements
+### 23:24:00 — Add · Browse and export fixed-cutoff statements
 
 Codex connected the statement API to the Accounts route through an internally scrolling dialog, with mobile posting cards and the existing light/dark themes. Previous/Next retain the cutoff; Refresh snapshot captures a new one. CSV downloads fetch all pages with exact minor-unit formatting, validate the complete result and protect untrusted text against spreadsheet formulas. The browser limit is explicitly 20,000 posting lines; larger server-streamed exports remain unimplemented. Cancellation or a failed request creates no partial file.
 
 Formatting, TypeScript and all ten frontend tests passed. Both local replicas were rebuilt. Chromium checks downloaded 301 AED lines at cutoff 10,201 ending at 637.28 and 293 BHD lines at cutoff 10,237 ending at 1,999.189; those values matched the statement view. Pagination returned the identical first page, and refresh advanced the BHD cutoff to 10,264. Cancellation and an injected network failure each created zero download objects. Escape restored focus to the originating account button. Desktop and mobile screenshots were reviewed in both themes. This is not a full cross-browser or accessibility certification; the native dialog's Tab behavior still needs broader keyboard review.
 
 The latest backend commit has one passing and one failing GitHub run. The failed HTTP smoke received 429 where it expected 200. The existing logs do not distinguish which admission condition refused it, so that diagnosis remains open rather than being called a rate-limit fix. No guard was relaxed, no submitted files were changed, and no VPS workloads were touched. This work used the frontend-design skill to preserve the existing visual system rather than introduce a new dashboard design.
+
+### 23:27:38 — Test · Separate HTTP readiness from financial admission
+
+Codex added a bounded 60-second wait for the existing database and host admission signals before the HTTP financial scenario. A healthy HTTP endpoint alone does not mean the independent watcher permits writes after the build and concurrency tests. The scenario still requires both concurrent requests to succeed and match; it does not retry away a failed financial assertion. Failures now print the returned response and observed guard state, and the transfer during the delivery pause must explicitly be accepted. The test restores the previously observed generator rate rather than assuming it was one.
+
+JavaScript syntax and the complete local HTTP smoke passed. No admission rule, threshold or lease was changed. The older CI refusal's exact cause remains unproven; the new diagnostics are intended to make another refusal explainable. The preceding statement entry's clock label was corrected from 23:27 to 23:24, before its commit; this is a wording/timestamp correction, not new verification evidence.
