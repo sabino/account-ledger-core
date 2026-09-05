@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -55,10 +56,10 @@ func TestCalendarTransitionIsAtomicAndIdempotent(t *testing.T) {
 	if recorded != 0 {
 		t.Fatal("administrative close refusal became a command outcome")
 	}
-	// Stand in for the not-yet-connected close executor. These operational rows
-	// are mutable; the transition itself must remain immutable.
-	if _, err = a.Pool.Exec(ctx, "UPDATE account_close_jobs SET state='done' WHERE run_id=$1 AND account_id IN ('a','b')", run); err != nil {
-		t.Fatal(err)
+	for _, id := range []string{"a", "b"} {
+		if _, err = a.CloseAccountDay(ctx, run, id, 1); err != nil {
+			t.Fatal(err)
+		}
 	}
 	result, err := b.Process(ctx, run, input)
 	if err != nil || result.Status != "accepted" {
@@ -67,7 +68,7 @@ func TestCalendarTransitionIsAtomicAndIdempotent(t *testing.T) {
 	if err = a.AdvanceDay(ctx, run, 2); !errors.Is(err, ErrClosePending) {
 		t.Fatalf("next transition: %v", err)
 	}
-	if _, err = a.Pool.Exec(ctx, "UPDATE account_close_jobs SET state='done' WHERE run_id=$1", run); err != nil {
+	if _, err = a.CloseAccountDay(ctx, run, "c", 1); err != nil {
 		t.Fatal(err)
 	}
 	if err = a.AdvanceDay(ctx, run, 2); err != nil {
@@ -81,6 +82,119 @@ func TestCalendarTransitionIsAtomicAndIdempotent(t *testing.T) {
 	}
 	if _, err = a.Pool.Exec(ctx, "DELETE FROM day_transitions WHERE run_id=$1", run); err == nil {
 		t.Fatal("runtime deleted immutable transition")
+	}
+}
+
+func TestCloseAccountDayRetriesPreserveEvidence(t *testing.T) {
+	a, b, run := testLedger(t)
+	ctx := context.Background()
+	held := command("reserved", "hold")
+	held.Authorization = "hold-a"
+	if result, err := a.Process(ctx, run, held); err != nil || result.Status != "accepted" {
+		t.Fatalf("hold: %+v %v", result, err)
+	}
+	if err := a.AdvanceDay(ctx, run, 1); err != nil {
+		t.Fatal(err)
+	}
+	results := make(chan Result, 8)
+	failures := make(chan error, 8)
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			s := a
+			if i%2 == 1 {
+				s = b
+			}
+			r, err := s.CloseAccountDay(ctx, run, "a", 1)
+			results <- r
+			failures <- err
+		}(i)
+	}
+	wg.Wait()
+	close(results)
+	close(failures)
+	for err := range failures {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	var sequence int64
+	var first *Result
+	for r := range results {
+		if first == nil {
+			copy := r
+			first = &copy
+		} else if !reflect.DeepEqual(*first, r) {
+			t.Fatal("close retries changed the recorded response")
+		}
+		if sequence == 0 {
+			sequence = r.Sequence
+		}
+		if r.Sequence != sequence || len(r.Legs) != 0 || len(r.Accruals) != 1 || r.Accruals[0].Basis != 10000 || r.Accruals[0].Amount != 4 {
+			t.Fatalf("close: %+v", r)
+		}
+	}
+	var batches, outbox int
+	if err := a.Pool.QueryRow(ctx, "SELECT (SELECT count(*) FROM journal_batches WHERE run_id=$1 AND kind='account_close'),(SELECT count(*) FROM outbox WHERE run_id=$1 AND sequence=$2)", run, sequence).Scan(&batches, &outbox); err != nil {
+		t.Fatal(err)
+	}
+	if batches != 1 || outbox != 1 {
+		t.Fatalf("batches=%d outbox=%d", batches, outbox)
+	}
+	var balance, heldUnits int64
+	if err := a.Pool.QueryRow(ctx, "SELECT balance,held FROM accounts WHERE run_id=$1 AND id='a'", run).Scan(&balance, &heldUnits); err != nil {
+		t.Fatal(err)
+	}
+	if balance != 10000 || heldUnits != 8000 {
+		t.Fatal("accrual moved posted or reserved money")
+	}
+	invalid := command("system:close:1:b", "transfer")
+	if _, err := a.Process(ctx, run, invalid); err == nil {
+		t.Fatal("public command occupied the internal namespace")
+	}
+}
+
+func TestNegativeCloseIsBlockedWithoutPoisoningOtherAccount(t *testing.T) {
+	a, b, run := testLedger(t)
+	ctx := context.Background()
+	debit := command("overdraft", "debit")
+	debit.Amount = "101"
+	if r, err := a.Process(ctx, run, debit); err != nil || r.Status != "accepted" {
+		t.Fatalf("setup: %+v %v", r, err)
+	}
+	if err := a.AdvanceDay(ctx, run, 1); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := a.CloseAccountDay(ctx, run, "a", 1); !errors.Is(err, ErrClosePolicy) {
+			t.Fatalf("negative close: %v", err)
+		}
+	}
+	var state, reason string
+	if err := a.Pool.QueryRow(ctx, "SELECT state,reason FROM account_close_jobs WHERE run_id=$1 AND account_id='a' AND day=1", run).Scan(&state, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if state != "blocked" || reason != ErrClosePolicy.Error() {
+		t.Fatalf("job: %s %s", state, reason)
+	}
+	if _, err := b.CloseAccountDay(ctx, run, "b", 1); err != nil {
+		t.Fatal(err)
+	}
+	credit := command("unrelated", "credit")
+	credit.Account = "b"
+	credit.BookedDay = 2
+	credit.ValueDay = 2
+	if r, err := b.Process(ctx, run, credit); err != nil || r.Status != "accepted" {
+		t.Fatalf("unrelated credit: %+v %v", r, err)
+	}
+	var count int
+	if err := a.Pool.QueryRow(ctx, "SELECT count(*) FROM journal_batches WHERE run_id=$1 AND command_id='system:close:1:a'", run).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatal("blocked close wrote accounting evidence")
 	}
 }
 

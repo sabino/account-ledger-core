@@ -45,6 +45,29 @@ func (q *Queries) FindDayTransition(ctx context.Context, arg FindDayTransitionPa
 	return i, err
 }
 
+const lockAccountCloseJob = `-- name: LockAccountCloseJob :one
+SELECT run_id, account_id, day, state, reason FROM account_close_jobs WHERE run_id=$1 AND account_id=$2 AND day=$3 FOR UPDATE
+`
+
+type LockAccountCloseJobParams struct {
+	RunID     string `json:"run_id"`
+	AccountID string `json:"account_id"`
+	Day       int32  `json:"day"`
+}
+
+func (q *Queries) LockAccountCloseJob(ctx context.Context, arg LockAccountCloseJobParams) (AccountCloseJob, error) {
+	row := q.db.QueryRow(ctx, lockAccountCloseJob, arg.RunID, arg.AccountID, arg.Day)
+	var i AccountCloseJob
+	err := row.Scan(
+		&i.RunID,
+		&i.AccountID,
+		&i.Day,
+		&i.State,
+		&i.Reason,
+	)
+	return i, err
+}
+
 const pendingAccountCloses = `-- name: PendingAccountCloses :one
 SELECT count(*) FROM account_close_jobs
 WHERE run_id=$1 AND account_id=$2 AND state<>'done'
@@ -106,5 +129,28 @@ type ScheduleAccountClosesParams struct {
 
 func (q *Queries) ScheduleAccountCloses(ctx context.Context, arg ScheduleAccountClosesParams) error {
 	_, err := q.db.Exec(ctx, scheduleAccountCloses, arg.Day, arg.RunID)
+	return err
+}
+
+const setAccountCloseJob = `-- name: SetAccountCloseJob :exec
+UPDATE account_close_jobs SET state=$4,reason=$5 WHERE run_id=$1 AND account_id=$2 AND day=$3
+`
+
+type SetAccountCloseJobParams struct {
+	RunID     string `json:"run_id"`
+	AccountID string `json:"account_id"`
+	Day       int32  `json:"day"`
+	State     string `json:"state"`
+	Reason    string `json:"reason"`
+}
+
+func (q *Queries) SetAccountCloseJob(ctx context.Context, arg SetAccountCloseJobParams) error {
+	_, err := q.db.Exec(ctx, setAccountCloseJob,
+		arg.RunID,
+		arg.AccountID,
+		arg.Day,
+		arg.State,
+		arg.Reason,
+	)
 	return err
 }

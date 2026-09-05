@@ -8,6 +8,7 @@ import (
 	"errors"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/sabino/account-ledger-core/service/internal/db"
@@ -21,7 +22,7 @@ func (s *Store) Process(ctx context.Context, runID string, command Command) (Res
 }
 
 func (s *Store) process(ctx context.Context, runID string, command Command, generated *db.ClaimGeneratedCommandRow) (Result, error) {
-	if len(command.ID) < 1 || len(command.ID) > 100 || len(command.Account) > 80 ||
+	if len(command.ID) < 1 || len(command.ID) > 100 || strings.HasPrefix(command.ID, "system:") || len(command.Account) > 80 ||
 		len(command.Authorization) > 100 || len(command.Destination) > 80 {
 		return Result{}, errors.New("invalid command identity")
 	}
