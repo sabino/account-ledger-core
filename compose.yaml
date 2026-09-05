@@ -55,6 +55,8 @@ services:
     image: chrislusf/seaweedfs:4.45@sha256:fc9f76fa993ad69966ffeb2f65d0318fcae39c6f8e20cf68ef7b3a5cb97769e5
     profiles: [lake]
     command: [mini, -dir=/data, -ip=lake, -ip.bind=0.0.0.0, -s3.config=/config/s3.json, -tableBucket=ledger-lake, -admin.ui=false, -webdav=false, -s3.port.lance=0, -master.volumeSizeLimitMB=64]
+    # Soft Go runtime limit leaves room below the hard container cap for mappings and native memory.
+    environment: {GOMEMLIMIT: 192MiB}
     volumes: ["lake-data:/data", "./deploy/local/lake/s3.json:/config/s3.json:ro"]
     mem_limit: 384m
     memswap_limit: 384m

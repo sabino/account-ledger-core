@@ -46,6 +46,7 @@ services:
     mem_limit: 192m
     memswap_limit: 192m
     cpus: 0.15
+    environment: {GOMEMLIMIT: 112MiB}
   cdc:
     mem_limit: 448m
     memswap_limit: 448m

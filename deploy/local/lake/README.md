@@ -62,6 +62,14 @@ At 21:50 on 2026-09-04 (UTC−03), the offsets table retained 167 snapshots for 
 
 The [upstream maintenance documentation](https://github.com/seaweedfs/seaweedfs/wiki/Iceberg-Table-Maintenance) describes a worker and admin scheduler for compaction, snapshot expiry and orphan removal. The pinned 4.45 image exposes that worker, but it is not configured or tested here. Its [versioned defaults](https://github.com/seaweedfs/seaweedfs/blob/4.45/weed/worker/tasks/iceberg/config.go) retain snapshots for seven days and keep at least five. A metadata-log limit alone does not solve retained snapshot/data growth. Maintenance must first be exercised on isolated tables, including read/restart and current-snapshot preservation, before enabling deletion on the running lake.
 
+## Storage memory observation
+
+The main local SeaweedFS container repeatedly restarted under its 384 MiB hard cap. At 22:26 on 2026-09-04 (UTC−03), Docker recorded an OOM event and exit 137; the kernel identified the `weed` process in that container's memory cgroup. The latest running container's `OOMKilled=false` field alone would have missed that history. CDC recovered from its stored offset, and all 9,562 envelopes at a captured source cutoff subsequently matched.
+
+The main profile now sets `GOMEMLIMIT=192MiB`, leaving space below the unchanged 384 MiB hard cap. After recreation, another complete comparison matched 9,806 envelopes with no duplicates or query-timeout retries. Initial observation covered roughly six minutes with no new restart. This is not a sustained stability result: generation is also subject to host-pressure admission, so elapsed time is not a fixed-volume load test.
+
+The [Go runtime memory limit](https://go.dev/doc/gc-guide#Memory_limit) is soft and does not account for every mapping or allocation outside the runtime. It does not replace the container cap, repair unbounded live state, or establish that retained metadata can grow safely. Longer observation and maintenance testing remain required. No hard limits were raised and no production services changed.
+
 ## Limits still required before deployment
 
 The separate [bounded allocation probe](BOUNDED-PROBE.md) verifies that the full `server` mode can enforce a finite volume-slot allowance and preserve an acknowledged object through exhaustion and restart. It does not change the default lake profile or establish a total filesystem quota.

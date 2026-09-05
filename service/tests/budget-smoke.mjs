@@ -61,6 +61,7 @@ while (fixtureCount() !== "12") {
 }
 const initial = await api("/api/status");
 const peak = {};
+let aggregatePeak = 0;
 try {
   await api("/api/controls", { eps: 20 });
   for (let sample = 0; sample < 12; sample++) {
@@ -81,6 +82,10 @@ try {
         peak[row.Name] || 0,
         bytes(row.MemUsage.split(" / ")[0]),
       );
+    aggregatePeak = Math.max(
+      aggregatePeak,
+      stats.reduce((sum, row) => sum + bytes(row.MemUsage.split(" / ")[0]), 0),
+    );
     console.log(
       JSON.stringify({
         sample,
@@ -112,6 +117,7 @@ try {
         BigInt(final.sequence) - BigInt(initial.sequence),
       ),
       sampled_peak_bytes: peak,
+      largest_sampled_aggregate_bytes: aggregatePeak,
       configured_memory_bytes: state.reduce(
         (sum, c) => sum + c.HostConfig.Memory,
         0,
