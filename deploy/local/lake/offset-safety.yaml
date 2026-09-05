@@ -1,0 +1,5 @@
+# Local compatibility test before promoting this connector policy to the default.
+services:
+  cdc:
+    environment:
+      DEBEZIUM_SOURCE_OFFSET_MISMATCH_STRATEGY: trust_offset

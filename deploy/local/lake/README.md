@@ -47,6 +47,8 @@ The repeated outage exercise passed: CDC's restart counter advanced from 1 to 2,
 
 The upstream release image index referenced a missing manifest. The working upstream build is pinned to its exact digest in Compose. Its runtime reports Iceberg 1.11.0; provenance and release suitability still need review before deployment.
 
+The separate [CDC resnapshot experiment](CDC-RECOVERY.md) tests stricter offset validation and an operator-controlled recovery on the paused budget stack. An ordinary restart has passed; the full fault/recovery path has not yet been recorded as passing. Do not infer recovery from a connected slot alone.
+
 ## Read-only retention inventory
 
 With Node 24 or newer and local Docker access:
