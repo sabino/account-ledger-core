@@ -1,0 +1,87 @@
+# Overlay for bounded-probe.yaml. Always use a new project/volume, not the
+# exhausted capacity probe. This catalog is unauthenticated and local-only.
+x-catalog: &catalog
+  image: quay.io/lakekeeper/catalog:v0.13.3@sha256:db2ba6168eb107f22242fb7f2edc4016fa35e57bdcc606894e809c418e32e8dc
+  environment:
+    LAKEKEEPER__PG_DATABASE_URL_WRITE: postgres://catalog:local-catalog-only@catalog-db:5432/catalog
+    LAKEKEEPER__PG_ENCRYPTION_KEY: local-experiment-key-not-for-production
+    LAKEKEEPER__PG_READ_POOL_CONNECTIONS: "2"
+    LAKEKEEPER__PG_WRITE_POOL_CONNECTIONS: "3"
+    RUST_LOG: info
+  mem_limit: 256m
+  memswap_limit: 256m
+  cpus: 0.25
+  pids_limit: 64
+  restart: "no"
+  logging: { driver: json-file, options: { max-size: 2m, max-file: "2" } }
+services:
+  query:
+    image: clickhouse/clickhouse-server:25.8@sha256:0152dd511befe6a2c2ef53e930726179669b08116da78500b37c51c96ff5ee77
+    environment:
+      CLICKHOUSE_USER: ledger_owner
+      CLICKHOUSE_PASSWORD: local-analytics-only
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    volumes:
+      - query-data:/var/lib/clickhouse
+      - ./clickhouse.xml:/etc/clickhouse-server/config.d/ledger.xml:ro
+      - ./budget-server.xml:/etc/clickhouse-server/config.d/zz-budget.xml:ro
+      - ./budget-users.xml:/etc/clickhouse-server/users.d/zz-budget.xml:ro
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.25
+    pids_limit: 180
+    restart: "no"
+    logging: { driver: json-file, options: { max-size: 2m, max-file: "2" } }
+    healthcheck:
+      test:
+        [
+          CMD-SHELL,
+          "clickhouse-client --user ledger_owner --password local-analytics-only --query 'SELECT 1'",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  catalog-db:
+    image: postgres:18.3-bookworm@sha256:80630f83606d8db77d30b3851b16a9f78be2d0d4dda6f7b82a1fdca5ebe3acba
+    environment:
+      POSTGRES_USER: catalog
+      POSTGRES_PASSWORD: local-catalog-only
+      POSTGRES_DB: catalog
+    command:
+      [
+        postgres,
+        -c,
+        shared_buffers=32MB,
+        -c,
+        work_mem=1MB,
+        -c,
+        max_connections=20,
+      ]
+    volumes: [catalog-db:/var/lib/postgresql]
+    mem_limit: 192m
+    memswap_limit: 192m
+    cpus: 0.2
+    healthcheck:
+      test: [CMD, pg_isready, -U, catalog, -d, catalog]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+    logging: { driver: json-file, options: { max-size: 2m, max-file: "2" } }
+  catalog-migrate:
+    <<: *catalog
+    command: [migrate]
+    depends_on: { catalog-db: { condition: service_healthy } }
+  catalog:
+    <<: *catalog
+    command: [serve]
+    depends_on:
+      catalog-migrate: { condition: service_completed_successfully }
+      lake: { condition: service_healthy }
+    healthcheck:
+      test: [CMD, /home/nonroot/lakekeeper, healthcheck]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+volumes:
+  catalog-db:
+  query-data:

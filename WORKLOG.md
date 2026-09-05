@@ -329,3 +329,9 @@ The System screenshot exposed a real layout bug. The secondary-route reset had l
 Codex inspected screenshots of all six routes at 1920×1080, 1100×900, and 390×844. After rebuilding the two local API containers and restarting their local proxy, browser geometry checks covered all six routes at widths 1920, 1440, 1100, and 390: no document-level horizontal overflow or visible panel narrower than 150 pixels. Wide journal tables still scroll inside their own panel. The updated desktop Transfers layout and mobile event inspector were also inspected visually.
 
 The mobile inspector opened from a real journal event, its Accounting tab selected correctly, Escape closed it, and the navigation drawer opened. Moving the time-laboratory cutoff to zero produced zero balances. TypeScript and formatting checks passed. These are Chromium checks at the listed sizes, not a cross-browser accessibility audit or a load test. AI assistance remains explicit. The submitted PDF and production host were not changed.
+
+### 21:20:00 — Check · Try Lakekeeper without replacing the working lake
+
+Codex tested a separate, local-only Lakekeeper catalog with its own PostgreSQL and bounded SeaweedFS storage. Catalog bootstrap, S3 validation, namespace/table creation, and ClickHouse discovery passed. Repeating the probe after a catalog restart preserved the warehouse and table identities. The table is empty: this is not evidence that CDC or recovery works with this catalog. Commands, ceilings and limitations are in `deploy/local/lake/LAKEKEEPER-PROBE.md`.
+
+A fresh read-only VPS check showed about 1,638 MiB available RAM. The existing smaller full-stack ceilings plus the 512 MiB reserve still exceed that headroom, even before adding a separate catalog. No production workloads were stopped or changed. Lakekeeper remains a candidate, not a reason to skip the deployment gate.
