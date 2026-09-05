@@ -1223,7 +1223,7 @@ body:not([data-view="overview"]) .workspace-grid {
   align-items: start;
   min-height: 65dvh;
 }
-body:not([data-view="overview"]) .workspace-grid > * {
+:where(body:not([data-view="overview"])) #route-grid > * {
   grid-area: auto;
 }
 body[data-view="journal"] #audit {
@@ -1237,13 +1237,17 @@ body[data-view="accounts"] #accounts-view {
   grid-column: span 2;
   height: 68dvh;
 }
+body[data-view="transfers"] .workspace-grid {
+  grid-template-columns: minmax(250px, 0.85fr) minmax(420px, 1.8fr) minmax(
+      280px,
+      1fr
+    );
+}
 body[data-view="transfers"] #audit {
-  grid-column: span 2;
-  height: 57dvh;
+  height: 68dvh;
 }
 body[data-view="transfers"] #inspector-shell {
-  grid-column: span 3;
-  max-height: 40dvh;
+  height: 68dvh;
 }
 body[data-view="system"] #system-view {
   grid-row: span 2;
@@ -1445,10 +1449,12 @@ body[data-view="time"] #scope-panel {
   }
   .workspace-toolbar {
     align-items: start;
+    flex-direction: column;
+    gap: 10px;
     padding: 14px 0;
   }
   .workspace-toolbar > h2 {
-    display: none;
+    display: block;
   }
   .view-controls {
     width: 100%;
@@ -1539,6 +1545,9 @@ body[data-view="time"] #scope-panel {
   }
   #simulation-panel {
     order: -1;
+  }
+  body[data-view="transfers"] #transfer-view {
+    order: -3;
   }
   #totals-panel {
     order: 1;

@@ -321,3 +321,11 @@ At my request, a dedicated Codex agent worked only on the frontend while the mai
 The styling uses shared dark tokens, restrained ambient light, clear outcome colors, keyboard focus handling, and reduced-motion rules. Search and journal display pause are scoped to the fetched preview. The chart shows recorded decision counts and declined/rejected counts, not invented monetary volume or latency. The inspector has Summary, Accounting, and Evidence tabs. No ledger policy or API behavior changed for this design.
 
 TypeScript and formatting checks passed. The agent checked unique DOM IDs and literal lookups; the main agent reviewed routing and state handling and rebuilt the local image. These are implementation checks, not proof of visual fidelity or a browser-tested mobile interaction. That verification remains pending. The submitted assessment and production host were not changed.
+
+### 21:16:00 — Fix · Check every dashboard route in the browser
+
+The System screenshot exposed a real layout bug. The secondary-route reset had lower CSS specificity than the overview panel IDs, so the browser kept named grid positions and created narrow implicit columns. Codex corrected the reset, brought the desktop Transfers inspector alongside the form and journal, restored mobile route headings, and placed the transfer form before the journal on the mobile Transfers page. No ledger behavior changed.
+
+Codex inspected screenshots of all six routes at 1920×1080, 1100×900, and 390×844. After rebuilding the two local API containers and restarting their local proxy, browser geometry checks covered all six routes at widths 1920, 1440, 1100, and 390: no document-level horizontal overflow or visible panel narrower than 150 pixels. Wide journal tables still scroll inside their own panel. The updated desktop Transfers layout and mobile event inspector were also inspected visually.
+
+The mobile inspector opened from a real journal event, its Accounting tab selected correctly, Escape closed it, and the navigation drawer opened. Moving the time-laboratory cutoff to zero produced zero balances. TypeScript and formatting checks passed. These are Chromium checks at the listed sizes, not a cross-browser accessibility audit or a load test. AI assistance remains explicit. The submitted PDF and production host were not changed.
