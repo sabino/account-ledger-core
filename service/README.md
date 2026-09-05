@@ -125,7 +125,7 @@ The local expired-lease check is reproducible:
 ```bash
 docker compose stop watchdog
 sleep 10
-node service/tests/guard-smoke.mjs
+docker compose --profile test run --rm --no-deps guard-runner
 docker compose start watchdog
 ```
 

@@ -39,7 +39,7 @@ jobs:
         run: |
           docker compose stop watchdog
           sleep 10
-          node service/tests/guard-smoke.mjs
+          docker compose --profile test run --rm --no-deps guard-runner
           docker compose start watchdog
       - name: Stop only this job's Compose project
         if: always()
