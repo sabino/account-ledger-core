@@ -60,6 +60,8 @@ On 2026-09-04, all six routes were visually reviewed in Chromium at desktop and 
 
 This is source-side evidence only: an active connection does not prove successful Iceberg commits, a current ClickHouse query, or a reconciled reporting cutoff. The existing retained-WAL resource guard remains separate from business approval. Lost-slot resnapshot/reconciliation and live lake freshness are still open work.
 
+With the optional local lake profile running, `node service/tests/cdc-source-smoke.mjs` checks exact project/container labels, stops only the local CDC consumer, observes `inactive` through the status API, verifies HTTP readiness and restarts the consumer in a finally block. It then waits for `streaming`. On 2026-09-04 that transition passed, with 909,928 retained WAL bytes observed while stopped. This test does not invalidate a slot, reconcile the lake or submit a financial command. It requires Docker access and is not a public fault-control endpoint.
+
 ## Notification delivery boundary
 
 The worker commits a 15-second delivery lease before making an HTTP call. Only its lease token can acknowledge that attempt. The receiver checks an HMAC signature and the complete payload against the recorded journal batch before inserting a unique inbox receipt. A lost acknowledgement is safe to retry. Claims, retries, and acknowledgements are append-only audit rows; the operational outbox lease is mutable.
