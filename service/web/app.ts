@@ -6,6 +6,7 @@ import {
   sidebarCollapsed,
   type PreferenceStore,
 } from "./preferences.js";
+import { createStatementView } from "./statement-view.js";
 
 type Account = {
   id: string;
@@ -230,6 +231,7 @@ function navigation(open: boolean) {
   if (open) $("navigation").querySelector<HTMLElement>("a")?.focus();
 }
 function route() {
+  statementView.close();
   const key = location.hash.slice(1) || "overview";
   if (key === "workspace") {
     $("workspace").focus();
@@ -292,6 +294,8 @@ $("nav-backdrop").addEventListener("click", () => navigation(false));
 $("close-inspector").addEventListener("click", closeInspector);
 $("inspector-backdrop").addEventListener("click", closeInspector);
 document.addEventListener("keydown", (event) => {
+  // The native dialog owns focus and Escape while a statement is open.
+  if ($<HTMLDialogElement>("statement-dialog").open) return;
   if (event.key === "Escape") {
     closeInspector();
     navigation(false);
@@ -487,13 +491,15 @@ function accountDirectory() {
   const focused = document.activeElement as HTMLElement | null;
   const focusedAccount =
     focused?.closest<HTMLElement>(".account-item")?.dataset.account;
-  const focusedAction = focused?.dataset.accountRefresh
-    ? "refresh"
-    : focused?.dataset.accountJournal
-      ? "journal"
-      : focused?.tagName === "SUMMARY"
-        ? "summary"
-        : "";
+  const focusedAction = focused?.dataset.accountStatement
+    ? "statement"
+    : focused?.dataset.accountRefresh
+      ? "refresh"
+      : focused?.dataset.accountJournal
+        ? "journal"
+        : focused?.tagName === "SUMMARY"
+          ? "summary"
+          : "";
   const selected = accounts.filter((a) => a.currency === viewCurrency());
   const filter = $<HTMLSelectElement>("account-group").value;
   const groups = [
@@ -535,7 +541,7 @@ function accountDirectory() {
       detail.open = directoryOpen.has(account.id);
       const available =
         BigInt(account.balance_minor) - BigInt(account.held_minor);
-      detail.innerHTML = `<summary><span class="account-identity"><strong>${esc(account.name)}</strong><small>${esc(account.id)} / ${esc(account.class)}</small></span><span class="account-amount">${money(account.balance_minor, account.currency)}<small>Posted${account.customer ? ` · ${money(account.held_minor, account.currency)} reserved` : ""}</small></span></summary><div class="account-expanded"><p>${account.customer ? `${money(available.toString(), account.currency)} available. Reserved funds are already included in the posted balance.` : "Internal account; not a customer spendable balance."}</p><div class="button-row"><button class="secondary" data-account-refresh="${esc(account.id)}">Refresh recent entries</button><button class="secondary" data-account-journal="${esc(account.id)}">View in journal</button></div><div class="account-entries" data-account-entries="${esc(account.id)}"></div></div>`;
+      detail.innerHTML = `<summary><span class="account-identity"><strong>${esc(account.name)}</strong><small>${esc(account.id)} / ${esc(account.class)}</small></span><span class="account-amount">${money(account.balance_minor, account.currency)}<small>Posted${account.customer ? ` · ${money(account.held_minor, account.currency)} reserved` : ""}</small></span></summary><div class="account-expanded"><p>${account.customer ? `${money(available.toString(), account.currency)} available. Reserved funds are already included in the posted balance.` : "Internal account; not a customer spendable balance."}</p><div class="button-row"><button data-account-statement="${esc(account.id)}">Full posted statement</button><button class="secondary" data-account-refresh="${esc(account.id)}">Refresh recent entries</button><button class="secondary" data-account-journal="${esc(account.id)}">View in journal</button></div><div class="account-entries" data-account-entries="${esc(account.id)}"></div></div>`;
       detail.addEventListener("toggle", () => {
         if (detail.open) {
           directoryOpen.add(account.id);
@@ -561,7 +567,9 @@ function accountDirectory() {
           ? "summary"
           : focusedAction === "refresh"
             ? "[data-account-refresh]"
-            : "[data-account-journal]",
+            : focusedAction === "statement"
+              ? "[data-account-statement]"
+              : "[data-account-journal]",
       )
       ?.focus({ preventScroll: true });
   }
@@ -630,6 +638,8 @@ $("account-groups").addEventListener("click", (event) => {
   );
   if (target?.dataset.accountRefresh)
     void loadAccountEntries(target.dataset.accountRefresh);
+  if (target?.dataset.accountStatement)
+    statementView.open(target.dataset.accountStatement);
   if (target?.dataset.accountJournal) {
     $<HTMLSelectElement>("statement").value = target.dataset.accountJournal;
     location.hash = "journal";
@@ -652,6 +662,16 @@ const esc = (s: unknown) =>
         c
       ]!,
   );
+const statementView = createStatementView({
+  esc,
+  restoreFocus(account) {
+    Array.from(
+      document.querySelectorAll<HTMLButtonElement>("[data-account-statement]"),
+    )
+      .find((button) => button.dataset.accountStatement === account)
+      ?.focus({ preventScroll: true });
+  },
+});
 async function api(path: string, body?: unknown) {
   const r = await fetch("/api/" + path, {
     headers: body ? { "Content-Type": "application/json" } : {},

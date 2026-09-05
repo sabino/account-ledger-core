@@ -582,5 +582,91 @@
       hidden
     ></button>
     <div id="toast" role="status" aria-live="polite"></div>
+    <dialog
+      id="statement-dialog"
+      class="statement-dialog"
+      aria-labelledby="statement-title"
+      aria-describedby="statement-context"
+    >
+      <header class="statement-header">
+        <div>
+          <p id="statement-context">Posted statement</p>
+          <h2 id="statement-title">Account statement</h2>
+          <p id="statement-cutoff"></p>
+        </div>
+        <button
+          id="statement-close"
+          class="secondary"
+          autofocus
+          aria-label="Close statement"
+        >
+          Close
+        </button>
+      </header>
+      <div class="statement-summary">
+        <div>
+          <span>Posted balance at cutoff</span
+          ><strong id="statement-closing">—</strong>
+        </div>
+        <div>
+          <span>Total debits</span><strong id="statement-debits">—</strong>
+        </div>
+        <div>
+          <span>Total credits</span><strong id="statement-credits">—</strong>
+        </div>
+      </div>
+      <div class="statement-toolbar">
+        <p id="statement-side-note"></p>
+        <div class="button-row">
+          <button id="statement-refresh" class="secondary">
+            Refresh snapshot</button
+          ><button id="statement-export" class="secondary">
+            Export complete CSV</button
+          ><button id="statement-cancel-export" class="secondary" hidden>
+            Cancel export
+          </button>
+        </div>
+      </div>
+      <p
+        id="statement-message"
+        class="statement-message"
+        role="status"
+        aria-live="polite"
+      ></p>
+      <div
+        id="statement-scroll"
+        class="statement-scroll"
+        tabindex="0"
+        role="region"
+        aria-label="Statement posting lines"
+      >
+        <table>
+          <thead>
+            <tr>
+              <th>Entry / recorded time</th>
+              <th>Movement / dates</th>
+              <th>Debit</th>
+              <th>Credit</th>
+              <th>Posted balance</th>
+            </tr>
+          </thead>
+          <tbody id="statement-lines"></tbody>
+        </table>
+      </div>
+      <footer class="statement-footer">
+        <div>
+          <strong id="statement-page">—</strong
+          ><small id="statement-opening">—</small>
+        </div>
+        <div class="button-row">
+          <button id="statement-prev" class="secondary">Previous page</button
+          ><button id="statement-next" class="secondary">Next page</button>
+        </div>
+      </footer>
+      <p class="statement-limit">
+        CSV downloads include every line at this cutoff, up to 20,000 lines. No
+        reservations, FX conversion or external bank matching.
+      </p>
+    </dialog>
   </body>
 </html>

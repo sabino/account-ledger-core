@@ -6,7 +6,7 @@
     "build": "tsc",
     "format": "prettier --write *.ts *.mjs package.json tsconfig.json ../cmd/ledger/web/index.html ../cmd/ledger/web/style.css",
     "check": "prettier --check *.ts *.mjs package.json tsconfig.json ../cmd/ledger/web/index.html ../cmd/ledger/web/style.css",
-    "test": "node --test preferences.test.mjs"
+    "test": "node --test *.test.mjs"
   },
   "devDependencies": {
     "prettier": "3.6.2",
