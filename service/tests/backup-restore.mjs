@@ -21,7 +21,8 @@ const sql = (name, statement) => pg([
   "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "ledger_owner", "-d", name, "-At", "-c", statement,
 ]);
 const tables = ["runs", "journal_clock", "accounts", "command_results", "journal_batches",
-  "postings", "holds", "fee_assessments", "reversals", "periods", "outbox", "notification_inbox"];
+  "postings", "holds", "fee_assessments", "reversals", "periods", "outbox", "notification_inbox",
+  "day_transitions", "account_close_jobs"];
 const fingerprint = (name) => Object.fromEntries(tables.map(table => {
   // Table names come only from the fixed list above, never a user request.
   const rows = sql(name, `SELECT to_jsonb(t)::text FROM ${table} t ORDER BY to_jsonb(t)::text`);

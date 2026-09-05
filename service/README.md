@@ -40,6 +40,8 @@ The test profile uses isolated run IDs in the local database and the restricted 
 
 Continuous virtual-day transitions, external reconciliation, Metabase, and deployment gates are still being worked on. The optional local lake profile and a small paused-writer backup/restore drill have separate checks; they are not proof of full production reporting or disaster recovery. Fixture tests are not evidence for missing features or general equivalence with every Python input.
 
+The internal calendar boundary now records an immutable transition and schedules one durable close job per customer account in the same transaction as advancing the run day. It waits for old-day commands; repeating the same transition is idempotent. Next-day money involving an account with unfinished close work returns an operational error without storing a business rejection. Already-closed accounts can transact while another account remains pending, but another calendar advance waits for all closes. The close executor, automatic scheduler, recurring capitalization and their UI are not connected yet: the live demo still stays on its current day. Integration tests explicitly simulate completed job states to test this boundary; they do not claim that account closing is implemented.
+
 ## Event analytics and currency views
 
 The dashboard separates recorded decisions from operational state. Its two time-series charts show new journal batches and declined/rejected decisions over 10 minutes, one hour, or 24 hours, in 60 equal buckets. Counts come from one PostgreSQL query snapshot. Empty buckets mean no recorded batch, not proof that the service was healthy. Matching retries do not append another decision; these are not HTTP request, latency, or error-rate metrics. Outcome and processing-instance breakdowns use the same window and currency. Exact bucket counts are expandable below each chart.
@@ -137,6 +139,6 @@ The check leaves generation paused. Resume it from the dashboard after the watch
 node service/tests/backup-restore.mjs
 ```
 
-Run from the repository root with access to the local Docker socket. This briefly stops the two API containers, takes a custom-format PostgreSQL backup in memory, restores it into a newly named disposable database, and compares all rows in 12 financial/delivery tables by SHA-256 fingerprints. It also checks batch balancing and the restored runtime role's lack of journal mutation and host-lease update privileges. Cleanup removes only the new restore database and restarts the API containers.
+Run from the repository root with access to the local Docker socket. This briefly stops the two API containers, takes a custom-format PostgreSQL backup in memory, restores it into a newly named disposable database, and compares all rows in 14 financial/delivery/calendar tables by SHA-256 fingerprints. It also checks batch balancing and the restored runtime role's lack of journal mutation and host-lease update privileges. Cleanup removes only the new restore database and restarts the API containers.
 
 This is not an online backup consistency test, an off-host backup, point-in-time recovery, or a measured production RTO. It reuses the existing cluster roles and does not restore replication slots or the object store. The drill must not be run while someone needs uninterrupted access to the local dashboard.

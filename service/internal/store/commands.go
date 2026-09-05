@@ -103,6 +103,20 @@ func (s *Store) process(ctx context.Context, runID string, command Command, gene
 		return Result{}, err
 	}
 	if result.Status == "accepted" {
+		if run.Profile == "live" {
+			for _, account := range accounts {
+				if !account.Customer {
+					continue
+				}
+				pending, err := queries.PendingAccountCloses(ctx, db.PendingAccountClosesParams{RunID: runID, AccountID: account.ID})
+				if err != nil {
+					return Result{}, err
+				}
+				if pending > 0 {
+					return Result{}, ErrClosePending
+				}
+			}
+		}
 		if run.Profile == "fixture" {
 			if err = s.closeBeforeEvent(ctx, queries, run, command, accounts); err != nil {
 				return Result{}, err

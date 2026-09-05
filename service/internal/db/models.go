@@ -20,6 +20,14 @@ type Account struct {
 	Version  int64  `json:"version"`
 }
 
+type AccountCloseJob struct {
+	RunID     string `json:"run_id"`
+	AccountID string `json:"account_id"`
+	Day       int32  `json:"day"`
+	State     string `json:"state"`
+	Reason    string `json:"reason"`
+}
+
 type CommandResult struct {
 	RunID     string             `json:"run_id"`
 	ID        string             `json:"id"`
@@ -42,6 +50,14 @@ type Control struct {
 	GuardReason      string             `json:"guard_reason"`
 	GeneratorToken   int64              `json:"generator_token"`
 	GeneratorUntil   pgtype.Timestamptz `json:"generator_until"`
+}
+
+type DayTransition struct {
+	RunID      string             `json:"run_id"`
+	FromDay    int32              `json:"from_day"`
+	ToDay      int32              `json:"to_day"`
+	RecordedAt pgtype.Timestamptz `json:"recorded_at"`
+	Instance   string             `json:"instance"`
 }
 
 type DeliveryAttemptEvent struct {
