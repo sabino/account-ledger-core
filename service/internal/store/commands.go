@@ -26,12 +26,6 @@ func (s *Store) process(ctx context.Context, runID string, command Command, gene
 		len(command.Authorization) > 100 || len(command.Destination) > 80 {
 		return Result{}, errors.New("invalid command identity")
 	}
-	payload, err := json.Marshal(command)
-	if err != nil {
-		return Result{}, err
-	}
-	digest := sha256.Sum256(payload)
-	hash := hex.EncodeToString(digest[:])
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return Result{}, err
@@ -49,7 +43,31 @@ func (s *Store) process(ctx context.Context, runID string, command Command, gene
 		if err != nil {
 			return Result{}, err
 		}
+		// Assign dates only after the lifecycle and generator fences. A retry
+		// reuses the original dates, but every other field must still hash to
+		// the original payload; changed recipe inputs are not silently accepted.
+		command.BookedDay, command.ValueDay = run.Day, run.Day
+		original, lookupErr := queries.LockCommand(ctx, db.LockCommandParams{RunID: runID, ID: command.ID})
+		if lookupErr != nil && !errors.Is(lookupErr, pgx.ErrNoRows) {
+			return Result{}, lookupErr
+		}
+		if lookupErr == nil && len(original.Response) > 0 {
+			var recorded Result
+			if err = json.Unmarshal(original.Response, &recorded); err != nil {
+				return Result{}, err
+			}
+			if recorded.Command == nil {
+				return Result{}, errors.New("generated retry has no original command evidence")
+			}
+			command.BookedDay, command.ValueDay = recorded.Command.BookedDay, recorded.Command.ValueDay
+		}
 	}
+	payload, err := json.Marshal(command)
+	if err != nil {
+		return Result{}, err
+	}
+	digest := sha256.Sum256(payload)
+	hash := hex.EncodeToString(digest[:])
 	commit := func() error {
 		if generated != nil {
 			changed, err := queries.AcknowledgeGeneratedCommand(ctx, db.AcknowledgeGeneratedCommandParams{

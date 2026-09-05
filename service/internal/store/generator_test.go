@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -92,6 +93,60 @@ func TestGeneratedClaimFencesStaleWorkerAndCommitsCursor(t *testing.T) {
 	}
 	if ordinal != first.Ordinal+2 {
 		t.Fatalf("replayed result lost cursor progress: %d", ordinal)
+	}
+}
+
+func TestGeneratedDatesAdvanceButOriginalRetriesDoNot(t *testing.T) {
+	a, b, run := testLedger(t)
+	ctx := context.Background()
+	claim := func() db.ClaimGeneratedCommandRow {
+		t.Helper()
+		if _, err := a.Pool.Exec(ctx, "UPDATE controls SET eps=1,next_at=now(),guard_until=now()+interval '1 hour' WHERE run_id=$1", run); err != nil {
+			t.Fatal(err)
+		}
+		c, err := a.Queries.ClaimGeneratedCommand(ctx, run)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	input := command("cross-day-retry", "transfer")
+	input.Amount = "0.01"
+	firstClaim := claim()
+	first, err := a.process(ctx, run, input, &firstClaim)
+	if err != nil || first.Status != "accepted" {
+		t.Fatalf("first: %+v %v", first, err)
+	}
+	if err = a.AdvanceDay(ctx, run, 1); err != nil {
+		t.Fatal(err)
+	}
+	// An already-committed retry needs no new money and can be replayed while
+	// closes are pending. Its cursor acknowledgement remains atomic.
+	retryClaim := claim()
+	retry, err := b.process(ctx, run, input, &retryClaim)
+	if err != nil || !reflect.DeepEqual(first, retry) {
+		t.Fatalf("retry: %+v %v", retry, err)
+	}
+	nextClaim := claim()
+	input.ID = "new-day-command"
+	if _, err = b.process(ctx, run, input, &nextClaim); !errors.Is(err, ErrClosePending) {
+		t.Fatalf("unfinished close bypassed: %v", err)
+	}
+	for _, id := range []string{"a", "b", "c"} {
+		if _, err = a.CloseAccountDay(ctx, run, id, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := b.process(ctx, run, input, &nextClaim)
+	if err != nil || result.Status != "accepted" || result.Command.BookedDay != 2 || result.Command.ValueDay != 2 {
+		t.Fatalf("new day: %+v %v", result, err)
+	}
+	// Public commands retain their explicit date validation; this is not a
+	// blanket rewrite of caller input into whatever date happens to work.
+	input.ID = "public-old-date"
+	public, err := a.Process(ctx, run, input)
+	if err != nil || public.Status != "rejected" {
+		t.Fatalf("public date: %+v %v", public, err)
 	}
 }
 

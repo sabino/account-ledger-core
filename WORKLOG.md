@@ -481,3 +481,11 @@ The integration scenario exercised twelve days, three accounts, both currencies 
 SQLC generation, Go vet, unit/race tests and the full integration suite passed; the latter took 18.725 seconds. Backup/restore matched all fifteen financial/delivery/calendar tables from a 3,666,959-byte backup and found zero unbalanced batches. Restore and verification took 26.029 seconds. Cleanup deleted only the disposable restored database; the source remained intact and both local APIs restarted healthy. Both CI runs for the preceding close-executor commit also passed.
 
 This is tested internal behavior, not an enabled calendar. Automatic scheduling, scheduler safety/admission, generated-command dates, the calendar UI and closed-period corrections still need work. The running demo has not been advanced by this change. No VPS services, submitted PDF or main-branch files were modified.
+
+### 00:27:30 — Fix · Preserve generated-command identity across virtual days
+
+Codex moved generated-command date assignment inside the financial transaction, after its lifecycle lock and generator fence. New work receives the locked run day. A deliberate recipe retry restores only the original committed dates before computing the payload hash; changing other inputs still conflicts. Public commands keep their explicit-date validation. This removes the generator's effective Day-1-only behavior without turning retries into new commands at midnight.
+
+The new integration test commits on Day 1, advances to Day 2, replays the original result while close jobs remain pending, refuses new money until those closes finish, then posts the new generated command on Day 2. A public stale-date request remains rejected. Existing stale-worker, expired-claim, changed-payload and durable-cursor tests still pass. Go vet, unit/race tests and the full integration suite passed; the full suite took 18.962 seconds. Both CI runs for recurring capitalization passed as well.
+
+Automatic calendar scheduling and its host/database admission gate are still not enabled. This changes the generator transaction path, not the existing VPS deployment or submitted assessment artifacts.

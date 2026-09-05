@@ -48,6 +48,8 @@ Period evidence includes all six daily calculations, links to the five earlier i
 
 Negative live balances block the affected close with an explicit missing-product-policy reason; this does not invent an AED/BHD overdraft fee or refund policy. The fixture's fee and terminal-finalization behavior is unchanged. The `system:` command-ID prefix is reserved for internal operations and cannot be submitted through `Process`. Automatic scheduling, scheduler admission and the calendar UI are not connected yet: the live demo still stays on its current day. Closed-period corrections and product-calendar configuration remain unfinished.
 
+Generated commands now receive the current day only after the transaction has acquired the run lifecycle and generator fences. When the recipe deliberately retries an earlier command, its original committed dates are retained and every other payload field must still match. This permits an exact retry across a day boundary without a duplicate credit or a date-induced identity conflict. New money still waits for the relevant account closes; ordinary public commands continue to validate their explicit dates.
+
 ## Event analytics and currency views
 
 The dashboard separates recorded decisions from operational state. Its two time-series charts show new journal batches and declined/rejected decisions over 10 minutes, one hour, or 24 hours, in 60 equal buckets. Counts come from one PostgreSQL query snapshot. Empty buckets mean no recorded batch, not proof that the service was healthy. Matching retries do not append another decision; these are not HTTP request, latency, or error-rate metrics. Outcome and processing-instance breakdowns use the same window and currency. Exact bucket counts are expandable below each chart.
