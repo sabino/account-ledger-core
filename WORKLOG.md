@@ -313,3 +313,11 @@ An isolated full-server configuration now uses eight 32 MiB volume slots, with e
 Seven slots had already been allocated to metadata, leaving only one for that bucket. This is not 256 MiB of usable capacity, a filesystem quota, or a tested Iceberg retention policy. The evidence and commands are in `deploy/local/lake/BOUNDED-PROBE.md`. The working local lake and the VPS were not migrated. A fresh read-only VPS check still showed about 1,633 MiB available RAM, so the earlier 1,280 MiB full-stack ceilings plus reserve still do not fit.
 
 Codex performed these local checks while the delegated agent worked only on the frontend. The worklog keeps that assistance explicit. Existing HTTP analytics and pause/recovery smoke tests are now included in the CI workflow; this records configuration, not a claim that remote CI has run.
+
+### 21:05:00 — Act · Turn the dashboard into routed workspaces
+
+At my request, a dedicated Codex agent worked only on the frontend while the main agent continued storage checks. The page now uses persistent hash-routed workspaces instead of a long anchor-scrolling document. The overview combines the compact KPI strip, simulation controls, real event-count chart, outcomes, accounts, watcher evidence, transfers, journal, and inspector. Mobile presentation uses event cards and a drawer/bottom sheet; separate System and Time views keep secondary explanations off the primary dashboard.
+
+The styling uses shared dark tokens, restrained ambient light, clear outcome colors, keyboard focus handling, and reduced-motion rules. Search and journal display pause are scoped to the fetched preview. The chart shows recorded decision counts and declined/rejected counts, not invented monetary volume or latency. The inspector has Summary, Accounting, and Evidence tabs. No ledger policy or API behavior changed for this design.
+
+TypeScript and formatting checks passed. The agent checked unique DOM IDs and literal lookups; the main agent reviewed routing and state handling and rebuilt the local image. These are implementation checks, not proof of visual fidelity or a browser-tested mobile interaction. That verification remains pending. The submitted assessment and production host were not changed.

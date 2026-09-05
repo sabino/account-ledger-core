@@ -45,7 +45,7 @@ Currency attribution uses the recorded command, with a posting-currency fallback
 
 Each current ledger account is single-currency. A customer-facing multi-currency wallet could group separate AED and BHD accounts, but that grouping is not implemented here. The selector changes account choices, current customer totals, and the journal preview; it never converts or combines currencies. Current balances and operational counters are not limited by the event window. The journal preview filters the latest 60 fetched batches, so it is not a complete filtered event search. The six-day laboratory remains an explicitly separate, two-currency fixture.
 
-The dark layout uses responsive navigation, stacked panels at narrower widths, and horizontally scrollable journal tables. It contains no crypto panels, invented trends, or third-party branding. Compilation and HTTP checks are separate from visual/responsive browser QA; that visual QA is still pending.
+The dark layout uses client-side hash routes for Overview, Journal, Accounts, Transfers, System, and Time. It moves persistent panels between workspaces without a full reload, rather than presenting one long scrolling page. The desktop overview keeps controls, charts, accounts, health, journal, and evidence together; smaller layouts use an icon rail or navigation drawer, mobile event cards, and an inspector drawer/bottom sheet. Search covers the currently fetched journal preview, and pausing that display does not pause the shared generator. Motion has a reduced-motion override. There are no crypto panels, invented trends, or third-party branding. Compilation and HTTP checks are separate from visual/responsive browser QA; that visual QA is still pending.
 
 ## Notification delivery boundary
 
