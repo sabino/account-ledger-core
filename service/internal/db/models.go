@@ -119,8 +119,12 @@ type Period struct {
 }
 
 type PgReplicationSlot struct {
-	Database   pgtype.Text `json:"database"`
-	RestartLsn interface{} `json:"restart_lsn"`
+	SlotName           pgtype.Text `json:"slot_name"`
+	Database           pgtype.Text `json:"database"`
+	RestartLsn         interface{} `json:"restart_lsn"`
+	Active             pgtype.Bool `json:"active"`
+	WalStatus          pgtype.Text `json:"wal_status"`
+	InvalidationReason pgtype.Text `json:"invalidation_reason"`
 }
 
 type Posting struct {

@@ -54,6 +54,15 @@ FROM controls c JOIN journal_clock j USING (run_id) WHERE c.run_id = 'demo';
 -- name: ListReplicas :many
 SELECT * FROM replica_heartbeats ORDER BY id LIMIT 10;
 
+-- name: CDCSourceStatus :one
+SELECT (count(*) > 0)::boolean AS present,
+  COALESCE(bool_or(active), false)::boolean AS active,
+  COALESCE(bool_or(wal_status = 'lost' OR invalidation_reason IS NOT NULL), false)::boolean AS invalidated,
+  COALESCE(max(wal_status), 'unknown')::text AS wal_status,
+  COALESCE(max(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn))::text, '')::text AS retained_wal_bytes
+FROM pg_replication_slots
+WHERE database = current_database() AND slot_name = 'ledger_lake';
+
 -- name: SetRate :execrows
 UPDATE controls SET eps = $1, boost_until = CASE WHEN $1 > 1
   THEN now() + interval '60 seconds' ELSE NULL END WHERE run_id = 'demo'

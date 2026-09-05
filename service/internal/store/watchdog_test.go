@@ -25,3 +25,14 @@ func TestRuntimeCannotRenewHostLease(t *testing.T) {
 		t.Fatalf("expected permission denial, got %v", err)
 	}
 }
+
+func TestRuntimeCanReadCDCSourceState(t *testing.T) {
+	a, _, _ := testLedger(t)
+	row, err := a.Queries.CDCSourceStatus(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !row.Present && (row.Active || row.Invalidated || row.RetainedWalBytes != "") {
+		t.Fatalf("absent slot had invented evidence: %+v", row)
+	}
+}

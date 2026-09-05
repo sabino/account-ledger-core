@@ -50,6 +50,37 @@ func (q *Queries) Admit(ctx context.Context) (int64, error) {
 	return result.RowsAffected(), nil
 }
 
+const cDCSourceStatus = `-- name: CDCSourceStatus :one
+SELECT (count(*) > 0)::boolean AS present,
+  COALESCE(bool_or(active), false)::boolean AS active,
+  COALESCE(bool_or(wal_status = 'lost' OR invalidation_reason IS NOT NULL), false)::boolean AS invalidated,
+  COALESCE(max(wal_status), 'unknown')::text AS wal_status,
+  COALESCE(max(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn))::text, '')::text AS retained_wal_bytes
+FROM pg_replication_slots
+WHERE database = current_database() AND slot_name = 'ledger_lake'
+`
+
+type CDCSourceStatusRow struct {
+	Present          bool   `json:"present"`
+	Active           bool   `json:"active"`
+	Invalidated      bool   `json:"invalidated"`
+	WalStatus        string `json:"wal_status"`
+	RetainedWalBytes string `json:"retained_wal_bytes"`
+}
+
+func (q *Queries) CDCSourceStatus(ctx context.Context) (CDCSourceStatusRow, error) {
+	row := q.db.QueryRow(ctx, cDCSourceStatus)
+	var i CDCSourceStatusRow
+	err := row.Scan(
+		&i.Present,
+		&i.Active,
+		&i.Invalidated,
+		&i.WalStatus,
+		&i.RetainedWalBytes,
+	)
+	return i, err
+}
+
 const claimGeneratedCommand = `-- name: ClaimGeneratedCommand :one
 UPDATE controls SET generator_token = generator_token + 1,
   generator_until = clock_timestamp() + interval '5 seconds'

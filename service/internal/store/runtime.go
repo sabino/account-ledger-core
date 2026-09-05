@@ -105,11 +105,16 @@ func (s *Store) Status(ctx context.Context) (map[string]any, error) {
 		replicas = append(replicas, map[string]any{"id": row.ID, "seen_at": row.SeenAt.Time,
 			"heap_bytes": row.HeapBytes, "healthy": time.Since(row.SeenAt.Time) < 10*time.Second})
 	}
+	cdc, err := s.Queries.CDCSourceStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return map[string]any{"eps": state.Eps, "generated": fmt.Sprint(state.Ordinal),
 		"sequence": fmt.Sprint(state.Position), "guard_reason": state.GuardReason,
 		"pause_reason": state.PauseReason, "guard_fresh": state.Fresh,
 		"pending_deliveries": state.Pending, "database_bytes": state.DatabaseBytes,
 		"replicas": replicas, "serving_instance": s.Instance, "cdc": "optional lake profile; freshness not observed by this endpoint",
+		"cdc_source": describeCDCSource(cdc),
 		"host_guard": host, "profile": "synthetic scenario mix; separate six-day assessment replay"}, nil
 }
 

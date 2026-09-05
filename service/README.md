@@ -7,12 +7,15 @@ This is follow-on work, not the submitted Python assessment. It is incomplete an
 From the repository root, with Docker Compose and working Docker daemon access:
 
 ```bash
-docker compose up --build -d --wait
+docker compose up --build -d
+docker compose up -d --wait postgres api-a api-b proxy
 ```
 
 Open **http://localhost:8088**. There are two identical Go instances, a dedicated PostgreSQL database, and a local reverse proxy. Forty fictional accounts receive explicit, balanced funding entries. One shared generator sends transfers at a low rate. Changing the slider affects everyone, not just one browser.
 
 The local passwords in `compose.yaml` and `deploy/local/init.sql` are disposable development credentials. Do not use this configuration as a public deployment. PostgreSQL has no published host port. The web port binds to loopback.
+
+The watcher has its own short database lease, not a Docker healthcheck; the explicit wait above covers database and HTTP readiness. Admission stays closed until the watcher publishes a safe observation.
 
 ```bash
 docker compose --profile test run --rm test-runner
@@ -46,6 +49,12 @@ Currency attribution uses the recorded command, with a posting-currency fallback
 Each current ledger account is single-currency. A customer-facing multi-currency wallet could group separate AED and BHD accounts, but that grouping is not implemented here. The selector changes account choices, current customer totals, and the journal preview; it never converts or combines currencies. Current balances and operational counters are not limited by the event window. The journal preview filters the latest 60 fetched batches, so it is not a complete filtered event search. The six-day laboratory remains an explicitly separate, two-currency fixture.
 
 The dark layout uses client-side hash routes for Overview, Journal, Accounts, Transfers, System, and Time. It moves persistent panels between workspaces without a full reload, rather than presenting one long scrolling page. The desktop overview keeps controls, charts, accounts, health, journal, and evidence together; smaller layouts use an icon rail or navigation drawer, mobile event cards, and an inspector drawer/bottom sheet. Search covers the currently fetched journal preview, and pausing that display does not pause the shared generator. Motion has a reduced-motion override. There are no crypto panels, invented trends, or third-party branding. All six routes received a Chromium visual pass at desktop, laptop and mobile sizes on 2026-09-04, followed by route geometry checks at four widths. This is separate from compilation and HTTP checks, and does not establish cross-browser or full accessibility coverage.
+
+## CDC source visibility
+
+`GET /api/status` reports `cdc_source` separately from financial readiness. Its state is `absent` when the configured slot is not present, `inactive` when it has no consumer, `streaming` when PostgreSQL reports an active consumer, or `invalidated` when PostgreSQL reports the slot lost/invalid. Absence alone cannot distinguish a disabled optional profile from a missing expected slot. Retained WAL bytes are exact decimal text, or null when the source restart position is unknown. Unknown is not zero.
+
+This is source-side evidence only: an active connection does not prove successful Iceberg commits, a current ClickHouse query, or a reconciled reporting cutoff. The existing retained-WAL resource guard remains separate from business approval. Lost-slot resnapshot/reconciliation and live lake freshness are still open work.
 
 ## Notification delivery boundary
 
