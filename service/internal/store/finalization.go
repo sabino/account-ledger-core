@@ -27,7 +27,7 @@ func (s *Store) Finalize(ctx context.Context, runID string, from, through int32)
 		return Result{}, err
 	}
 	if run.Profile != "fixture" {
-		return Result{}, errors.New("recurring live periods not implemented")
+		return Result{}, errors.New("terminal finalization is fixture-only; live periods use account closes")
 	}
 	policy, err := domain.ParsePolicy(run.Policy)
 	if err != nil {

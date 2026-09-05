@@ -22,7 +22,7 @@ const sql = (name, statement) => pg([
 ]);
 const tables = ["runs", "journal_clock", "accounts", "command_results", "journal_batches",
   "postings", "holds", "fee_assessments", "reversals", "periods", "outbox", "notification_inbox",
-  "day_transitions", "account_close_jobs"];
+  "day_transitions", "account_close_jobs", "account_periods"];
 const fingerprint = (name) => Object.fromEntries(tables.map(table => {
   // Table names come only from the fixed list above, never a user request.
   const rows = sql(name, `SELECT to_jsonb(t)::text FROM ${table} t ORDER BY to_jsonb(t)::text`);

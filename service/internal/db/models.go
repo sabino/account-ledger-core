@@ -28,6 +28,15 @@ type AccountCloseJob struct {
 	Reason    string `json:"reason"`
 }
 
+type AccountPeriod struct {
+	RunID      string `json:"run_id"`
+	AccountID  string `json:"account_id"`
+	StartDay   int32  `json:"start_day"`
+	ThroughDay int32  `json:"through_day"`
+	Sequence   int64  `json:"sequence"`
+	Amount     int64  `json:"amount"`
+}
+
 type CommandResult struct {
 	RunID     string             `json:"run_id"`
 	ID        string             `json:"id"`

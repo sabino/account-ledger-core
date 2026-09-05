@@ -96,6 +96,79 @@ func (q *Queries) PendingRunCloses(ctx context.Context, runID string) (int64, er
 	return count, err
 }
 
+const priorPeriodCloses = `-- name: PriorPeriodCloses :many
+SELECT j.day,b.envelope AS response FROM account_close_jobs j
+JOIN command_results c ON c.run_id=j.run_id AND c.id='system:close:'||j.day::text||':'||j.account_id
+JOIN journal_batches b ON b.run_id=c.run_id AND b.sequence=(c.response->>'sequence')::bigint
+ AND b.command_id=c.id AND b.kind='account_close'
+WHERE j.run_id=$1 AND j.account_id=$2 AND j.day>=$3::integer
+ AND j.day<$4::integer AND j.state='done'
+ORDER BY j.day
+`
+
+type PriorPeriodClosesParams struct {
+	RunID      string `json:"run_id"`
+	AccountID  string `json:"account_id"`
+	StartDay   int32  `json:"start_day"`
+	ThroughDay int32  `json:"through_day"`
+}
+
+type PriorPeriodClosesRow struct {
+	Day      int32  `json:"day"`
+	Response []byte `json:"response"`
+}
+
+func (q *Queries) PriorPeriodCloses(ctx context.Context, arg PriorPeriodClosesParams) ([]PriorPeriodClosesRow, error) {
+	rows, err := q.db.Query(ctx, priorPeriodCloses,
+		arg.RunID,
+		arg.AccountID,
+		arg.StartDay,
+		arg.ThroughDay,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PriorPeriodClosesRow{}
+	for rows.Next() {
+		var i PriorPeriodClosesRow
+		if err := rows.Scan(&i.Day, &i.Response); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const recordAccountPeriod = `-- name: RecordAccountPeriod :exec
+INSERT INTO account_periods(run_id,account_id,start_day,through_day,sequence,amount)
+VALUES($1,$2,$3,$4,$5,$6)
+`
+
+type RecordAccountPeriodParams struct {
+	RunID      string `json:"run_id"`
+	AccountID  string `json:"account_id"`
+	StartDay   int32  `json:"start_day"`
+	ThroughDay int32  `json:"through_day"`
+	Sequence   int64  `json:"sequence"`
+	Amount     int64  `json:"amount"`
+}
+
+func (q *Queries) RecordAccountPeriod(ctx context.Context, arg RecordAccountPeriodParams) error {
+	_, err := q.db.Exec(ctx, recordAccountPeriod,
+		arg.RunID,
+		arg.AccountID,
+		arg.StartDay,
+		arg.ThroughDay,
+		arg.Sequence,
+		arg.Amount,
+	)
+	return err
+}
+
 const recordDayTransition = `-- name: RecordDayTransition :exec
 INSERT INTO day_transitions(run_id,from_day,to_day,instance) VALUES($1,$2,$3,$4)
 `

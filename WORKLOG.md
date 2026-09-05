@@ -469,3 +469,15 @@ Codex implemented the internal close executor. It locks lifecycle, operation ide
 Eight concurrent retries across the two runtime stores returned the identical recorded response and produced one close batch and one outbox item. A reservation did not reduce the interest basis. Negative live balances persist a blocked-job reason without minting a fee or recording a fake successful close; another closed account still accepted its credit. Existing calendar tests now execute real closes rather than manually completing jobs. Go vet, unit/race checks, four targeted integration tests and the full integration suite passed; the full suite took 13.765 seconds.
 
 The executor is not yet scheduled automatically. Recurring capitalization, scheduler admission and the calendar UI remain unfinished, and the live demo day has not advanced. The fixture's fee/finalization policy is unchanged. No VPS service was modified.
+
+## 2026-09-05 — Go service experiment, continued
+
+### 00:22:35 — Add · Capitalize recurring simulation periods atomically
+
+Codex added per-account capitalization to every sixth daily close. The final daily accrual, balanced interest credit, immutable period record, close completion and outbox commit in one transaction. There is no interval where next-day spending sees a completed close but misses the interest credit. Prior daily amounts come from the immutable close envelopes, with sequence links in the period evidence. The six-day cadence is a fixed simulation rule, not a banking month or a configurable calendar. Zero-interest periods are recorded without zero postings; the fixture's terminal finalization is unchanged.
+
+The integration scenario exercised twelve days, three accounts, both currencies and concurrent retries through both runtime stores. Exact half-even ties demonstrate why summing daily rounded amounts differs from rounding the period total. The second period includes the preceding capitalization in its balance basis. Late retries preserved the original response, booking day and instance. An intentionally blocked local period-table insert forced a failure after money and journal writes were staged: balances, journal clock, command claim and job state all rolled back. Runtime permissions and immutable triggers prevented period changes.
+
+SQLC generation, Go vet, unit/race tests and the full integration suite passed; the latter took 18.725 seconds. Backup/restore matched all fifteen financial/delivery/calendar tables from a 3,666,959-byte backup and found zero unbalanced batches. Restore and verification took 26.029 seconds. Cleanup deleted only the disposable restored database; the source remained intact and both local APIs restarted healthy. Both CI runs for the preceding close-executor commit also passed.
+
+This is tested internal behavior, not an enabled calendar. Automatic scheduling, scheduler safety/admission, generated-command dates, the calendar UI and closed-period corrections still need work. The running demo has not been advanced by this change. No VPS services, submitted PDF or main-branch files were modified.

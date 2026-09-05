@@ -23,3 +23,16 @@ SELECT * FROM account_close_jobs WHERE run_id=$1 AND account_id=$2 AND day=$3 FO
 
 -- name: SetAccountCloseJob :exec
 UPDATE account_close_jobs SET state=$4,reason=$5 WHERE run_id=$1 AND account_id=$2 AND day=$3;
+
+-- name: PriorPeriodCloses :many
+SELECT j.day,b.envelope AS response FROM account_close_jobs j
+JOIN command_results c ON c.run_id=j.run_id AND c.id='system:close:'||j.day::text||':'||j.account_id
+JOIN journal_batches b ON b.run_id=c.run_id AND b.sequence=(c.response->>'sequence')::bigint
+ AND b.command_id=c.id AND b.kind='account_close'
+WHERE j.run_id=$1 AND j.account_id=$2 AND j.day>=sqlc.arg(start_day)::integer
+ AND j.day<sqlc.arg(through_day)::integer AND j.state='done'
+ORDER BY j.day;
+
+-- name: RecordAccountPeriod :exec
+INSERT INTO account_periods(run_id,account_id,start_day,through_day,sequence,amount)
+VALUES($1,$2,$3,$4,$5,$6);

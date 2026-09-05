@@ -48,6 +48,7 @@ type Leg struct {
 }
 
 type Result struct {
+	Period      *PeriodEvidence   `json:"period,omitempty"`
 	Decision    *DecisionEvidence `json:"decision,omitempty"`
 	Calculation *Calculation      `json:"calculation,omitempty"`
 	ID          string            `json:"id"`
@@ -62,6 +63,13 @@ type Result struct {
 	Accruals    []Accrual         `json:"accruals,omitempty"`
 	Policy      json.RawMessage   `json:"policy"`
 	Command     *Command          `json:"command,omitempty"`
+}
+
+type PeriodEvidence struct {
+	StartDay       int32    `json:"start_day"`
+	ThroughDay     int32    `json:"through_day"`
+	Amount         int64    `json:"amount,string"`
+	PriorSequences []string `json:"prior_sequences"`
 }
 
 type DecisionEvidence struct {

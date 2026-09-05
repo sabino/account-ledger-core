@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/sabino/account-ledger-core/service/internal/db"
@@ -15,9 +17,13 @@ var ErrClosePending = errors.New("account day close pending")
 var ErrCalendarInput = errors.New("invalid simulation day transition")
 var ErrClosePolicy = errors.New("live overdraft close policy is not configured")
 
-// CloseAccountDay records accrual evidence, not capitalization. Identity,
-// account lock, job completion, journal and outbox commit together. It does not
-// perform network IO or hold another customer's lock.
+// Fixed simulation cadence, recorded explicitly in each period envelope.
+// This is not a configurable bank month or a change to fixture finalization.
+const simulationPeriodDays int32 = 6
+
+// CloseAccountDay records daily accrual and, on a period boundary, capitalizes
+// the sum of rounded daily amounts. The final accrual, balanced posting, period,
+// completed job and outbox commit together before next-day spending is allowed.
 func (s *Store) CloseAccountDay(ctx context.Context, runID, accountID string, day int32) (Result, error) {
 	if day < 1 || day >= 366 || len(accountID) == 0 || len(accountID) > 80 {
 		return Result{}, ErrCalendarInput
@@ -52,12 +58,36 @@ func (s *Store) CloseAccountDay(ctx context.Context, runID, accountID string, da
 		err = json.Unmarshal(prior.Response, &result)
 		return result, err
 	}
-	account, err := q.LockAccount(ctx, db.LockAccountParams{RunID: runID, ID: accountID})
+	metadata, err := q.StatementAccount(ctx, db.StatementAccountParams{RunID: runID, ID: accountID})
 	if err != nil {
 		return Result{}, err
 	}
-	if !account.Customer {
+	if !metadata.Customer || metadata.Class != "liability" {
 		return Result{}, ErrCalendarInput
+	}
+	ids := []string{accountID}
+	boundary := day%simulationPeriodDays == 0
+	if boundary {
+		ids = append(ids, "interest-"+metadata.Currency)
+	}
+	sort.Strings(ids)
+	accounts := make(map[string]*db.Account, len(ids))
+	for _, id := range ids {
+		locked, err := q.LockAccount(ctx, db.LockAccountParams{RunID: runID, ID: id})
+		if err != nil {
+			return Result{}, err
+		}
+		accounts[id] = &locked
+	}
+	account := accounts[accountID]
+	if account.Currency != metadata.Currency || !account.Customer || account.Class != "liability" {
+		return Result{}, ErrCalendarInput
+	}
+	if boundary {
+		counterpart := accounts["interest-"+account.Currency]
+		if counterpart.Customer || counterpart.Class != "expense" || counterpart.Currency != account.Currency {
+			return Result{}, errors.New("invalid interest expense account")
+		}
 	}
 	job, err := q.LockAccountCloseJob(ctx, db.LockAccountCloseJobParams{RunID: runID, AccountID: accountID, Day: day})
 	if err != nil {
@@ -89,8 +119,52 @@ func (s *Store) CloseAccountDay(ctx context.Context, runID, accountID string, da
 	}
 	command.Currency = account.Currency
 	result := Result{ID: command.ID, Kind: command.Kind, Status: "accepted", Instance: s.Instance, Legs: []Leg{}, Accruals: []Accrual{{Account: accountID, Currency: account.Currency, ValueDay: day, Basis: basis, Amount: amount}}}
+	if boundary {
+		start := day - simulationPeriodDays + 1
+		prior, err := q.PriorPeriodCloses(ctx, db.PriorPeriodClosesParams{RunID: runID, AccountID: accountID, StartDay: start, ThroughDay: day})
+		if err != nil {
+			return Result{}, err
+		}
+		if len(prior) != int(simulationPeriodDays-1) {
+			return Result{}, ErrClosePending
+		}
+		period := &PeriodEvidence{StartDay: start, ThroughDay: day, Amount: amount}
+		accruals := make([]Accrual, 0, simulationPeriodDays)
+		for i, row := range prior {
+			var closed Result
+			if err = json.Unmarshal(row.Response, &closed); err != nil {
+				return Result{}, err
+			}
+			if row.Day != start+int32(i) || closed.Status != "accepted" || closed.Kind != "account_close" || len(closed.Accruals) != 1 || closed.Sequence <= 0 {
+				return Result{}, errors.New("incomplete period accrual evidence")
+			}
+			accrual := closed.Accruals[0]
+			if accrual.Account != accountID || accrual.Currency != account.Currency || accrual.ValueDay != row.Day || accrual.Amount < 0 {
+				return Result{}, errors.New("inconsistent period accrual evidence")
+			}
+			period.Amount, err = domain.Add(period.Amount, accrual.Amount)
+			if err != nil {
+				return Result{}, err
+			}
+			period.PriorSequences = append(period.PriorSequences, strconv.FormatInt(closed.Sequence, 10))
+			accruals = append(accruals, accrual)
+		}
+		result.Accruals = append(accruals, result.Accruals...)
+		result.Period = period
+		if period.Amount > 0 {
+			result.Legs = movement("interest-"+account.Currency, accountID, account.Currency, period.Amount, day, "interest")
+			if err = applyBalances(ctx, q, runID, accounts, result); err != nil {
+				return Result{}, err
+			}
+		}
+	}
 	if err = s.appendResult(ctx, q, run, command, &result); err != nil {
 		return Result{}, err
+	}
+	if result.Period != nil {
+		if err = q.RecordAccountPeriod(ctx, db.RecordAccountPeriodParams{RunID: runID, AccountID: accountID, StartDay: result.Period.StartDay, ThroughDay: day, Sequence: result.Sequence, Amount: result.Period.Amount}); err != nil {
+			return Result{}, err
+		}
 	}
 	if err = q.SetAccountCloseJob(ctx, db.SetAccountCloseJobParams{RunID: runID, AccountID: accountID, Day: day, State: "done"}); err != nil {
 		return Result{}, err
