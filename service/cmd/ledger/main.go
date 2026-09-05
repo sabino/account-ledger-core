@@ -149,6 +149,12 @@ func main() {
 		value, err := db.Statement(ctx, "demo", request)
 		reply(w, value, err)
 	})
+	mux.HandleFunc("GET /api/financial", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		value, err := db.Financial(ctx, "demo")
+		reply(w, value, err)
+	})
 	mux.HandleFunc("GET /api/analytics", func(w http.ResponseWriter, r *http.Request) {
 		currency := r.URL.Query().Get("currency")
 		window := r.URL.Query().Get("window")

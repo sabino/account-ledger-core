@@ -1,0 +1,79 @@
+-- name: FinancialSummary :one
+-- One MVCC snapshot; exact NUMERIC sums are transported as minor-unit strings.
+-- Positive posting legs count each transfer/capture/purchase once, including tax.
+WITH scope AS (
+ SELECT now() AS through, date_trunc('day',now(),'UTC') AS today,
+ date_trunc('hour',now(),'UTC') AS hour, date_trunc('minute',now(),'UTC') AS minute
+), currencies AS (
+ SELECT unnest(ARRAY['AED','BHD']) AS currency
+), period_names AS (
+ SELECT unnest(ARRAY['today','run']) AS period
+), movements AS MATERIALIZED (
+ SELECT b.sequence,b.created_at,b.kind,p.currency,sum(p.units::numeric) AS amount
+ FROM journal_batches b JOIN postings p USING(run_id,sequence)
+ WHERE b.run_id=sqlc.arg(run_id) AND b.envelope->>'status'='accepted'
+ AND b.kind IN ('transfer','split_transfer','capture','purchase') AND p.units>0
+ GROUP BY b.sequence,b.created_at,b.kind,p.currency
+), periods AS (
+ SELECT c.currency, v.period,
+ coalesce(sum(amount) FILTER (WHERE m.kind IN ('transfer','split_transfer')),0)::text AS transfers,
+ coalesce(sum(amount) FILTER (WHERE m.kind='capture'),0)::text AS captures,
+ coalesce(sum(amount) FILTER (WHERE m.kind='purchase'),0)::text AS purchases,
+ coalesce(sum(amount),0)::text AS processed,count(m.sequence) AS operations
+ FROM currencies c CROSS JOIN period_names v CROSS JOIN scope s
+ LEFT JOIN movements m ON m.currency=c.currency AND m.created_at<s.through
+ AND (v.period='run' OR m.created_at>=s.today)
+ GROUP BY c.currency,v.period
+), balances AS (
+ SELECT c.currency,coalesce(sum(a.balance::numeric),0)::text AS posted,
+ coalesce(sum(a.held::numeric),0)::text AS held,
+ coalesce(sum(a.balance::numeric-a.held::numeric),0)::text AS available,count(a.id) AS customers
+ FROM currencies c LEFT JOIN accounts a ON a.currency=c.currency
+ AND a.run_id=sqlc.arg(run_id) AND a.customer GROUP BY c.currency
+), hourly AS (
+ SELECT currency,date_trunc('hour',created_at,'UTC') AS at,sum(amount) AS amount
+ FROM movements,scope WHERE created_at>=scope.hour-interval '23 hours' AND created_at<scope.through
+ GROUP BY currency,at
+), minute AS (
+ SELECT currency,date_trunc('minute',created_at,'UTC') AS at,sum(amount) AS amount
+ FROM movements,scope WHERE created_at>=scope.minute-interval '59 minutes' AND created_at<scope.through
+ GROUP BY currency,at
+), daily AS (
+ SELECT date_trunc('day',created_at,'UTC') AS at,
+ coalesce(sum(amount) FILTER (WHERE currency='AED'),0)::text AS aed,
+ coalesce(sum(amount) FILTER (WHERE currency='BHD'),0)::text AS bhd
+ FROM movements,scope WHERE created_at>=scope.today-interval '144 hours' AND created_at<scope.through
+ GROUP BY at
+), decisions AS (
+ SELECT date_trunc('day',created_at,'UTC') AS at,count(*) AS commands
+ FROM journal_batches,scope WHERE run_id=sqlc.arg(run_id)
+ AND created_at>=scope.today-interval '144 hours' AND created_at<scope.through GROUP BY at
+)
+SELECT jsonb_build_object(
+ 'asOf',s.through,'day',to_char(s.today AT TIME ZONE 'UTC','YYYY-MM-DD'),'timeZone','UTC',
+ 'runId',r.id,'runStartedAt',r.created_at,
+ 'definition','Committed transfers (including splits), final captures and gross purchases, counted once per operation. Excludes funding, holds, retries, declines, rejections, reversals and calendar maintenance. Customer balances are current, not period flows.',
+ 'byCurrency',(SELECT jsonb_object_agg(b.currency,jsonb_build_object(
+   'today',(SELECT jsonb_build_object('transfersMinor',transfers,'capturesMinor',captures,
+      'purchasesGrossMinor',purchases,'processedMinor',processed,'operations',operations)
+      FROM periods WHERE currency=b.currency AND period='today'),
+   'run',(SELECT jsonb_build_object('transfersMinor',transfers,'capturesMinor',captures,
+      'purchasesGrossMinor',purchases,'processedMinor',processed,'operations',operations)
+      FROM periods WHERE currency=b.currency AND period='run'),
+   'balances',jsonb_build_object('postedMinor',b.posted,'heldMinor',b.held,
+      'availableMinor',b.available,'customerCount',b.customers))) FROM balances b),
+ 'hourly',(SELECT jsonb_object_agg(c.currency,(SELECT jsonb_agg(jsonb_build_object(
+      'start',tick,'amountMinor',coalesce(h.amount,0)::text) ORDER BY tick)
+      FROM generate_series(s.hour-interval '23 hours',s.hour,interval '1 hour') tick
+      LEFT JOIN hourly h ON h.at=tick AND h.currency=c.currency)) FROM currencies c),
+ 'minute',(SELECT jsonb_object_agg(c.currency,(SELECT jsonb_agg(jsonb_build_object(
+      'start',tick,'amountMinor',coalesce(m.amount,0)::text) ORDER BY tick)
+      FROM generate_series(s.minute-interval '59 minutes',s.minute,interval '1 minute') tick
+      LEFT JOIN minute m ON m.at=tick AND m.currency=c.currency)) FROM currencies c),
+ 'daily',(SELECT jsonb_agg(jsonb_build_object('date',to_char(tick AT TIME ZONE 'UTC','YYYY-MM-DD'),
+      'AED',coalesce(d.aed,'0'),'BHD',coalesce(d.bhd,'0'),'commands',coalesce(e.commands,0),
+      'partial',tick=s.today) ORDER BY tick)
+      FROM generate_series(0,6) n CROSS JOIN LATERAL
+      (SELECT s.today-(6-n)*interval '24 hours' AS tick) ticks
+      LEFT JOIN daily d ON d.at=tick LEFT JOIN decisions e ON e.at=tick)
+ )::jsonb FROM scope s CROSS JOIN runs r WHERE r.id=sqlc.arg(run_id);
