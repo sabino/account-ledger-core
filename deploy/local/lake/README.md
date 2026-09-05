@@ -19,6 +19,18 @@ The complete fixture was read through the REST catalog and its balances reconstr
 
 CDC is at-least-once. Consumers must group by `(run_id, sequence)` and reject conflicting envelope variants before trusting the result. `verify.sql` displays that variant count; it is a diagnostic, not an automated production reconciliation gate. Whole-batch envelopes avoid interpreting half a double-entry batch, but reporting remains asynchronous.
 
+The bounded local verifier compares every complete envelope against a captured PostgreSQL cutoff, tolerates identical redeliveries, and fails on conflicting or unexpected batches:
+
+```bash
+node --test service/tests/lake-comparison.test.mjs
+node service/tests/lake-reconcile.mjs ledger-lab assessment-v1
+node service/tests/lake-reconcile.mjs ledger-lab demo
+```
+
+It permits only the two named local projects and known runs, at most 10,000 source batches, 20,000 result rows, 32 MiB command output and a two-minute catch-up window. This is an operator test, not a scalable ongoing reporting watermark. Run it with local Docker access; it does not change source or lake records.
+
+On 2026-09-04, the fixture's 12 envelopes matched. The live check initially failed with 5,461 of 6,911 captured batches present. The CDC writer had exited after a catalog connection failure, while the reader and object store were healthy. It exited with code 0, so `on-failure:3` did not restart it. After an operator restart, the comparison passed for all 7,080 batches at a new cutoff. No conflicting envelopes or duplicate rows appeared in that compared prefix. Unit tests separately cover identical and conflicting duplicates. Automatic supervision after this clean-exit failure remains a deployment gate; the manual recovery is not proof of it.
+
 The upstream release image index referenced a missing manifest. The working upstream build is pinned to its exact digest in Compose. Its runtime reports Iceberg 1.11.0; provenance and release suitability still need review before deployment.
 
 ## Limits still required before deployment
