@@ -34,6 +34,7 @@ jobs:
           node service/tests/analytics-smoke.mjs
           node service/tests/statements-smoke.mjs
           node --test service/tests/lake-comparison.test.mjs
+          node --test service/tests/lake-chunks.test.mjs
           node service/tests/http-smoke.mjs
       - name: Verify expired host lease blocks both replicas
         run: |

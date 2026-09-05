@@ -27,7 +27,9 @@ node service/tests/lake-reconcile.mjs ledger-lab assessment-v1
 node service/tests/lake-reconcile.mjs ledger-lab demo
 ```
 
-It permits only the two named local projects and known runs, at most 10,000 source batches, 20,000 result rows, 32 MiB command output and a two-minute catch-up window. This is an operator test, not a scalable ongoing reporting watermark. Run it with local Docker access; it does not change source or lake records.
+It permits only the two named local projects and known runs, up to the simulation's 100,000-batch run budget. It captures source count and cutoff together, then compares ordered ranges of at most 1,000 source envelopes. Each lake range has a 20,000-row result ceiling, 32 MiB command-output ceiling and 15-second query limit. A chunk can wait up to two minutes for ingestion, subject to a ten-minute overall budget; a running command can exceed the deadline by its bounded process timeout. At most two process-timeout retries are allowed across the entire comparison. Identical redeliveries count once, conflicting or unexpected identities fail, and missing source chunks or a changed retained-prefix count fail.
+
+The source cutoff stays fixed while new source batches arrive. Lake queries may observe different Iceberg snapshots, so this is an incremental comparison of immutable envelopes, not one pinned lake snapshot or an ongoing reporting watermark. Queries can still scan many files; bounded response memory does not imply constant query cost. Run it with local Docker access; it does not change source or lake records.
 
 On 2026-09-04, the fixture's 12 envelopes matched. The live check initially failed with 5,461 of 6,911 captured batches present. The CDC writer had exited after a catalog connection failure, while the reader and object store were healthy. It exited with code 0, so the original `on-failure:3` policy did not restart it. After an operator restart, the comparison passed for all 7,080 batches at a new cutoff. No conflicting envelopes or duplicate rows appeared in that compared prefix. Unit tests separately cover identical and conflicting duplicates.
 
