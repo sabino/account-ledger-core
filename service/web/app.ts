@@ -8,6 +8,7 @@ import {
 } from "./preferences.js";
 import { createStatementView } from "./statement-view.js";
 import { readCalendar, calendarMessage } from "./calendar.js";
+import { createFinancialView } from "./financial-view.js";
 
 type Account = {
   id: string;
@@ -66,6 +67,7 @@ let journalRequest = 0;
 let seenSequences = new Set<string>();
 let returnFocus: HTMLElement | null = null;
 let rateDirty = false;
+let admissionSafe = false;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 let accounts: Account[] = [];
@@ -105,6 +107,21 @@ document
   );
 systemColor.addEventListener("change", applyTheme);
 applyTheme();
+let effects = readPreference(preferenceStore, "ledger.effects") !== "off";
+function applyEffects() {
+  document.documentElement.dataset.effects = effects ? "on" : "off";
+  $("effects-toggle").setAttribute("aria-pressed", String(effects));
+  $("effects-toggle").setAttribute(
+    "aria-label",
+    `Turn visual effects ${effects ? "off" : "on"}`,
+  );
+}
+$("effects-toggle").addEventListener("click", () => {
+  effects = !effects;
+  writePreference(preferenceStore, "ledger.effects", effects ? "on" : "off");
+  applyEffects();
+});
+applyEffects();
 function applySidebar(collapsed: boolean) {
   document.body.classList.toggle("sidebar-collapsed", collapsed);
   $("sidebar-toggle").setAttribute("aria-expanded", String(!collapsed));
@@ -149,15 +166,15 @@ const routes: Record<
   { title: string; subtitle: string; panels: string[] }
 > = {
   overview: {
-    title: "Overview",
-    subtitle: "Live accounting, recorded decisions and the system behind them.",
+    title: "Ledger Lab",
+    subtitle: "Money in motion. Every side accounted for.",
     panels: [
       "simulation-panel",
       "chart-panel",
       "totals-panel",
       "accounts-view",
       "health-panel",
-      "transfer-view",
+      "history-preview",
       "audit",
       "inspector-shell",
     ],
@@ -207,11 +224,14 @@ function closeInspector() {
   $("navigation").inert = matchMedia("(max-width: 1023px)").matches;
   document.body.classList.remove("inspector-open");
   const current = routes[document.body.dataset.view || "overview"];
-  $(
+  const inspectorHome = $(
     current?.panels.includes("inspector-shell")
       ? "route-grid"
       : "panel-storage",
-  ).append($("inspector-shell"));
+  );
+  (inspectorHome.querySelector(".overview-live") || inspectorHome).append(
+    $("inspector-shell"),
+  );
   if (returnFocus?.isConnected) returnFocus.focus();
   else if (selectedEvent)
     Array.from(document.querySelectorAll<HTMLButtonElement>("[data-sequence]"))
@@ -245,7 +265,24 @@ function route() {
     storage = $("panel-storage");
   grid.querySelectorAll(".panel").forEach((panel) => storage.append(panel));
   grid.replaceChildren();
-  if (selected === "system") {
+  grid.className =
+    selected === "overview" ? "overview-layout" : "workspace-grid";
+  if (selected === "overview") {
+    const analyticsRow = document.createElement("div");
+    analyticsRow.className = "overview-analytics";
+    ["chart-panel", "totals-panel", "accounts-view", "health-panel"].forEach(
+      (id) => analyticsRow.append($(id)),
+    );
+    const live = document.createElement("div");
+    live.className = "overview-live";
+    const controls = document.createElement("div");
+    controls.className = "control-stack";
+    ["simulation-panel", "history-preview"].forEach((id) =>
+      controls.append($(id)),
+    );
+    live.append(controls, $("audit"), $("inspector-shell"));
+    grid.append(analyticsRow, live);
+  } else if (selected === "system") {
     grid.append($("system-view"));
     for (const ids of [
       ["health-panel"],
@@ -269,11 +306,19 @@ function route() {
   $("view-currency").closest("label")!.hidden =
     selected === "time" || selected === "system";
   grid.setAttribute("aria-label", routes[selected].title + " workspace");
-  document.title = `${routes[selected].title} · Ledger Lab`;
+  document.title =
+    selected === "overview"
+      ? "Ledger Lab · Live workspace"
+      : `${routes[selected].title} · Ledger Lab`;
   document
     .querySelectorAll<HTMLAnchorElement>("[data-route]")
     .forEach((link) => {
-      link.setAttribute("aria-label", routes[link.dataset.route!].title);
+      link.setAttribute(
+        "aria-label",
+        link.dataset.route === "overview"
+          ? "Overview"
+          : routes[link.dataset.route!].title,
+      );
       if (link.dataset.route === selected)
         link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
@@ -284,6 +329,7 @@ function route() {
 }
 window.addEventListener("hashchange", route);
 matchMedia("(min-width: 1280px)").addEventListener("change", closeInspector);
+matchMedia("(min-width: 1400px)").addEventListener("change", closeInspector);
 matchMedia("(min-width: 1700px)").addEventListener("change", closeInspector);
 matchMedia("(min-width: 1024px)").addEventListener("change", () =>
   navigation(false),
@@ -296,7 +342,7 @@ $("close-inspector").addEventListener("click", closeInspector);
 $("inspector-backdrop").addEventListener("click", closeInspector);
 document.addEventListener("keydown", (event) => {
   // The native dialog owns focus and Escape while a statement is open.
-  if ($<HTMLDialogElement>("statement-dialog").open) return;
+  if (document.querySelector("dialog[open]")) return;
   if (event.key === "Escape") {
     closeInspector();
     navigation(false);
@@ -673,6 +719,7 @@ const statementView = createStatementView({
       ?.focus({ preventScroll: true });
   },
 });
+const financialView = createFinancialView({ api, esc });
 async function api(path: string, body?: unknown) {
   const r = await fetch("/api/" + path, {
     headers: body ? { "Content-Type": "application/json" } : {},
@@ -951,6 +998,8 @@ function inspectEvent(row: JournalRow, open = true) {
   if (
     open &&
     (matchMedia("(max-width: 1279px)").matches ||
+      (document.body.dataset.view === "overview" &&
+        matchMedia("(max-width: 1399px)").matches) ||
       (document.body.dataset.view === "transfers" &&
         matchMedia("(max-width: 1699px)").matches))
   ) {
@@ -1032,6 +1081,7 @@ async function refresh() {
   try {
     const [status, list] = await Promise.all([api("status"), api("accounts")]);
     accounts = list;
+    financialView.accounts(list);
     accountSummary();
     if (!$<HTMLSelectElement>("source").options.length) choices();
     else destinations();
@@ -1070,9 +1120,29 @@ async function refresh() {
       "unsafe",
       !status.host_guard?.safe || !status.guard_fresh,
     );
+    admissionSafe = Boolean(status.host_guard?.safe && status.guard_fresh);
+    $<HTMLButtonElement>("pause-outbox").disabled = !admissionSafe;
+    $("admission-status").textContent = admissionSafe
+      ? "Service admission clear · synthetic ledger connected"
+      : `Generation and transfers blocked: ${$("guard").textContent}. Pausing generation remains available.`;
+    $("admission-status").classList.toggle("unsafe", !admissionSafe);
+    $<HTMLButtonElement>("apply-rate").disabled =
+      !admissionSafe && Number($<HTMLInputElement>("eps").value) > 0;
+    $("transfer-form").querySelector<HTMLButtonElement>("button")!.disabled =
+      !admissionSafe;
     const evidence = status.host_guard?.evidence;
     const hostRows = evidence
       ? [
+          [
+            "Host watcher",
+            status.host_guard.safe
+              ? "Clear"
+              : status.host_guard.reason || "Unsafe",
+          ],
+          [
+            "Database / CDC guard",
+            status.guard_fresh ? "Clear" : status.guard_reason || "Stale",
+          ],
           [
             "Memory available",
             `${(evidence.available_bytes / 1073741824).toFixed(2)} GiB`,
@@ -1125,10 +1195,21 @@ async function refresh() {
       )
       .join("");
     await journal();
-    if (Date.now() - analyticsUpdated > 10000) await analytics();
+    if (Date.now() - analyticsUpdated > 10000)
+      await Promise.all([analytics(), financialView.refresh()]);
   } catch (e) {
     $("connection").textContent = "○ Connection unavailable";
     document.body.classList.add("connection-lost");
+    financialView.stale();
+    admissionSafe = false;
+    $<HTMLButtonElement>("pause-outbox").disabled = true;
+    $("admission-status").textContent =
+      "Connection unavailable. Displayed data may be stale; refresh to check service admission.";
+    $("admission-status").classList.add("unsafe");
+    $<HTMLButtonElement>("apply-rate").disabled =
+      Number($<HTMLInputElement>("eps").value) > 0;
+    $("transfer-form").querySelector<HTMLButtonElement>("button")!.disabled =
+      true;
     $("footer-state").textContent =
       "Connection unavailable · displayed values may be stale";
     console.error(e);
@@ -1165,6 +1246,8 @@ $("statement").addEventListener("change", () =>
 );
 $("eps").addEventListener("input", () => {
   rateDirty = true;
+  $<HTMLButtonElement>("apply-rate").disabled =
+    !admissionSafe && Number($<HTMLInputElement>("eps").value) > 0;
   $("rate").textContent = $<HTMLInputElement>("eps").value;
   rangeFill();
 });
@@ -1216,7 +1299,7 @@ $("transfer-form").addEventListener("submit", async (e) => {
   } catch (e) {
     toast((e as Error).message);
   } finally {
-    button.disabled = false;
+    button.disabled = !admissionSafe;
   }
 });
 $("pause-outbox").addEventListener("click", async () => {
@@ -1249,8 +1332,14 @@ async function showFixture() {
   const request = ++fixtureRequest;
   const known = $<HTMLInputElement>("knowledge").value;
   $("knowledge-label").textContent = known;
+  $<HTMLInputElement>("preview-knowledge").value = known;
+  $("preview-knowledge-label").textContent = `${known} / 12`;
   const state = await api("fixture?known=" + known);
   if (request !== fixtureRequest) return;
+  const finalDay = state.daily.at(-1);
+  $("preview-balance").textContent = finalDay
+    ? money(finalDay.AED, "AED")
+    : "No projection available";
   $("fixture-days").replaceChildren(
     ...state.daily.map((day: { day: number; AED: string; BHD: string }) => {
       const row = document.createElement("tr");
@@ -1289,6 +1378,11 @@ async function showFixture() {
     `Batch #${last.sequence}: ${result.id} · ${result.status}\n${result.reason || ""}\n${legs.join("\n") || "No monetary posting. The decision is still recorded."}`;
 }
 let fixtureTimer: ReturnType<typeof setTimeout>;
+$("preview-knowledge").addEventListener("input", () => {
+  $<HTMLInputElement>("knowledge").value =
+    $<HTMLInputElement>("preview-knowledge").value;
+  $("knowledge").dispatchEvent(new Event("input"));
+});
 $("knowledge").addEventListener("input", () => {
   clearTimeout(fixtureTimer);
   fixtureTimer = setTimeout(

@@ -84,20 +84,11 @@
           ☰
         </button>
         <div class="heading">
-          <h1 id="view-title" tabindex="-1">Overview</h1>
+          <h1 id="view-title" tabindex="-1">Ledger Lab</h1>
           <p id="view-subtitle">
             Live double-entry. Every decision leaves evidence.
           </p>
         </div>
-        <label class="global-search"
-          ><span aria-hidden="true">⌕</span
-          ><input
-            id="search"
-            type="search"
-            placeholder="Search the latest journal preview…"
-            aria-label="Search latest journal preview"
-          /><kbd>⌘ K</kbd></label
-        >
         <div class="header-status">
           <span id="connection" role="status">Connecting…</span
           ><small id="clock">—</small>
@@ -131,8 +122,20 @@
             ◐
           </button>
         </div>
+        <a class="action-link primary-action" href="#transfers"
+          >＋ New transfer</a
+        >
       </header>
       <div class="workspace-toolbar">
+        <label class="global-search"
+          ><span aria-hidden="true">⌕</span
+          ><input
+            id="search"
+            type="search"
+            placeholder="Search events, accounts, or references…"
+            aria-label="Search latest journal preview"
+          /><kbd>Ctrl K</kbd></label
+        >
         <span id="view-context" class="view-context"
           >Demo ledger / live overview</span
         >
@@ -143,15 +146,66 @@
               <option value="BHD">BHD · 3 decimals</option>
             </select></label
           ><label
-            >Event window<select id="view-window">
+            >Command window<select id="view-window">
               <option value="10m">Last 10 minutes</option>
               <option value="1h" selected>Last hour</option>
               <option value="24h">Last 24 hours</option>
             </select></label
-          ><a class="action-link" href="#transfers">＋ Transfer</a>
+          ><button
+            id="effects-toggle"
+            class="icon-button secondary"
+            aria-label="Turn visual effects off"
+            aria-pressed="true"
+            title="Visual effects"
+          >
+            ✧
+          </button>
         </div>
       </div>
       <main id="workspace" tabindex="-1">
+        <p id="admission-status" class="admission-status" role="status">
+          Checking service admission…
+        </p>
+        <section
+          id="money-overview"
+          class="money-overview"
+          aria-labelledby="money-title"
+        >
+          <div class="money-overview-head">
+            <div>
+              <h2 id="money-title">Money overview</h2>
+              <span id="money-asof"
+                >Waiting for an authoritative snapshot…</span
+              >
+            </div>
+            <div class="money-controls">
+              <div class="segmented" role="group" aria-label="Money period">
+                <button data-money-period="today" aria-pressed="true">
+                  Today</button
+                ><button data-money-period="run" aria-pressed="false">
+                  This run
+                </button>
+              </div>
+              <button
+                id="freeze-money"
+                class="icon-button secondary"
+                aria-label="Pause monetary display"
+                aria-pressed="false"
+              >
+                Ⅱ</button
+              ><button id="money-how" class="text-button">How counted ⓘ</button>
+            </div>
+          </div>
+          <div id="currency-grid" class="currency-grid"></div>
+          <div class="money-overview-foot">
+            <span id="money-note"
+              >Separate currencies. Every committed economic operation counted
+              once.</span
+            ><button id="money-daily" class="text-button">
+              Daily totals ▤
+            </button>
+          </div>
+        </section>
         <section class="metrics" aria-label="Live counters">
           <article class="metric">
             <span>Recorded decisions</span><strong id="event-total">—</strong
@@ -159,25 +213,8 @@
             <div id="metric-spark" class="spark"></div>
           </article>
           <article class="metric">
-            <span>Committed batches</span><strong id="batches">—</strong
-            ><small>All demo currencies · lifetime</small>
-          </article>
-          <article class="metric">
-            <span>Accepted rate</span><strong id="accepted-rate">—</strong
-            ><small>Selected window / currency</small>
-          </article>
-          <article class="metric extra-metric">
-            <span>Declined / rejected</span
-            ><strong id="event-negative">—</strong
-            ><small>Business outcomes, not errors</small>
-          </article>
-          <article class="metric">
-            <span>Waiting delivery</span><strong id="pending">—</strong
-            ><small>Demo outbox · all currencies</small>
-          </article>
-          <article class="metric extra-metric">
-            <span>Database footprint</span><strong id="db-size">—</strong
-            ><small>Whole database</small>
+            <span>Recorded batches</span><strong id="batches">—</strong
+            ><small>All durable outcomes · retained ledger</small>
           </article>
           <article class="metric">
             <span>Balance checks</span
@@ -216,7 +253,7 @@
               <span>Paused</span><span>20 max</span>
             </div>
             <div class="button-row">
-              <button id="apply-rate">Apply rate</button
+              <button id="apply-rate" disabled>Apply rate</button
               ><button id="pause-simulation" class="secondary">Pause</button>
             </div>
             <p class="note">
@@ -226,17 +263,40 @@
           </section>
           <section class="panel chart-card" id="chart-panel">
             <div class="section-heading">
-              <h2>Event throughput</h2>
-              <span class="live-label"
-                ><i class="live-dot"></i>Recorded activity</span
-              >
+              <div>
+                <h2 id="chart-title">Value processed</h2>
+                <p class="note" id="chart-subtitle">
+                  Exact currency amounts, by processing time
+                </p>
+              </div>
+              <div class="chart-controls">
+                <select id="chart-measure" aria-label="Chart measure">
+                  <option value="AED">AED value</option>
+                  <option value="BHD">BHD value</option>
+                  <option value="commands">Command counts</option>
+                </select>
+                <div
+                  id="value-windows"
+                  class="segmented"
+                  role="group"
+                  aria-label="Processed value time window"
+                >
+                  <button data-value-window="1h" aria-pressed="false">1H</button
+                  ><button data-value-window="6h" aria-pressed="false">
+                    6H</button
+                  ><button data-value-window="today" aria-pressed="true">
+                    Today
+                  </button>
+                </div>
+              </div>
             </div>
-            <div class="chart-legend">
+            <div id="command-legend" class="chart-legend" hidden>
               <span><i class="legend-dot"></i>All decisions</span
               ><span
                 ><i class="legend-dot negative"></i>Declined + rejected</span
               >
             </div>
+            <div id="money-chart" class="chart"></div>
             <div id="events-chart" class="chart"></div>
             <p class="note" id="analytics-status" role="status">
               Loading recorded decisions…
@@ -248,12 +308,50 @@
               <span id="totals-currency" class="badge">AED</span>
             </div>
             <div id="outcome-bars" class="bar-list"></div>
+            <dl class="compact-facts">
+              <div>
+                <dt>Accepted rate</dt>
+                <dd id="accepted-rate">—</dd>
+              </div>
+              <div>
+                <dt>Declined / rejected</dt>
+                <dd id="event-negative">—</dd>
+              </div>
+              <div>
+                <dt>Pending delivery</dt>
+                <dd id="pending">—</dd>
+              </div>
+              <div>
+                <dt>Database footprint</dt>
+                <dd id="db-size">—</dd>
+              </div>
+            </dl>
             <h3>Processing replicas</h3>
             <div id="instance-bars" class="bar-list"></div>
             <p class="note">
               Journal decisions, not HTTP attempts. Identical retries do not add
               a batch.
             </p>
+          </section>
+          <section class="panel history-preview" id="history-preview">
+            <div class="section-heading">
+              <h2>Time travel</h2>
+              <span class="badge">Isolated replay</span>
+            </div>
+            <label for="preview-knowledge"
+              >Knowledge cutoff
+              <strong id="preview-knowledge-label">12 / 12</strong></label
+            ><input
+              id="preview-knowledge"
+              type="range"
+              min="0"
+              max="12"
+              value="12"
+            /><strong id="preview-balance" class="stat">—</strong>
+            <p class="note">
+              Day 6 · later records can change an earlier projection.
+            </p>
+            <a class="text-button" href="#time">Open the six-day laboratory</a>
           </section>
           <section class="panel" id="accounts-view">
             <div class="section-heading">
@@ -304,7 +402,7 @@
             <div class="health-line">
               <span>Outbox</span><strong id="outbox-health">—</strong>
             </div>
-            <h3>Host watcher</h3>
+            <h3>Service admission</h3>
             <div id="guard" class="guard-status" role="status">
               Checking safety…
             </div>
@@ -342,7 +440,9 @@
                   autocomplete="off"
                 /><span id="currency">AED</span>
               </div>
-              <button type="submit">Send transfer <span>→</span></button>
+              <button type="submit" disabled>
+                Send transfer <span>→</span>
+              </button>
               <p id="transfer-day" class="note">Checking the simulation day…</p>
             </form>
             <p class="note">
@@ -501,7 +601,7 @@
               Pause notifications for 15 seconds. Transfers continue; the
               backlog should drain after the pause.
             </p>
-            <button id="pause-outbox" class="secondary">
+            <button id="pause-outbox" class="secondary" disabled>
               Pause delivery · 15 sec
             </button>
             <p class="note">
@@ -590,6 +690,19 @@
       hidden
     ></button>
     <div id="toast" role="status" aria-live="polite"></div>
+    <dialog
+      id="money-dialog"
+      class="money-dialog"
+      aria-labelledby="money-dialog-title"
+    >
+      <div class="section-heading">
+        <h2 id="money-dialog-title">How value is counted</h2>
+        <button id="money-dialog-close" class="secondary" autofocus>
+          Close
+        </button>
+      </div>
+      <div id="money-dialog-content"></div>
+    </dialog>
     <dialog
       id="statement-dialog"
       class="statement-dialog"

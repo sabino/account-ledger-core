@@ -33,8 +33,13 @@ for (const currency of ["AED", "BHD"]) {
     amount(balances.availableMinor),
     amount(balances.postedMinor) - amount(balances.heldMinor),
   );
-  assert.ok(amount(summary.run.processedMinor) >= amount(summary.today.processedMinor));
-  for (const [series, count] of [[data.hourly[currency], 24], [data.minute[currency], 60]]) {
+  assert.ok(
+    amount(summary.run.processedMinor) >= amount(summary.today.processedMinor),
+  );
+  for (const [series, count] of [
+    [data.hourly[currency], 24],
+    [data.minute[currency], 60],
+  ]) {
     assert.equal(series.length, count);
     let previous = -Infinity;
     for (const bucket of series) {
@@ -48,8 +53,15 @@ for (const currency of ["AED", "BHD"]) {
 }
 assert.equal(data.daily.at(-1).date, data.day);
 assert.equal(data.daily.at(-1).partial, true);
-console.log(JSON.stringify({
-  check: "financial aggregates", as_of: data.asOf, run: data.runId,
-  today: Object.fromEntries(["AED", "BHD"].map((c) => [c, data.byCurrency[c].today.processedMinor])),
-  scope: "read-only HTTP shape, exact sum, stock/flow and bucket consistency; integration tests independently exercise economic counting",
-}));
+console.log(
+  JSON.stringify({
+    check: "financial aggregates",
+    as_of: data.asOf,
+    run: data.runId,
+    today: Object.fromEntries(
+      ["AED", "BHD"].map((c) => [c, data.byCurrency[c].today.processedMinor]),
+    ),
+    scope:
+      "read-only HTTP shape, exact sum, stock/flow and bucket consistency; integration tests independently exercise economic counting",
+  }),
+);
