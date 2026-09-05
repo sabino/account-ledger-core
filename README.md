@@ -16,6 +16,16 @@ Open **http://localhost:8088**. Startup is not proof of readiness: follow the [s
 
 The optional [reporting experiment](deploy/local/lake/README.md) connects PostgreSQL CDC to Iceberg and self-hosted ClickHouse. It is not required for the transactional dashboard to run.
 
+## Understand the complete service
+
+The [implementation and scaling guide](docs/ledger-lab-guide.md) explains the project from funding and double-entry through concurrent commits, delivery, CDC and reporting. It distinguishes working code, local observations and proposed changes, including resource tuning, partitioning, sharding, database availability and dbt transformations. A separate [PDF edition](output/pdf/ledger-lab-implementation-guide.pdf) is available; it does not replace the submitted assessment PDF.
+
+The [5 September evidence](docs/evidence/2026-09-05/README.md) includes a real reporting failure: a connected CDC consumer stopped advancing its acknowledged position, retained WAL grew, and the financial admission guard stopped new simulation work. The investigation also found offset timeouts and accumulated lake snapshots. This is not a claim of a repaired, unattended reporting pipeline.
+
+The supplied v2 design is now the working frontend, using exact server aggregates rather than a demo adapter. This local capture deliberately retains the admission warning; it shows the actual observed state.
+
+![Ledger Lab v2: actual local overview with separate AED/BHD money, operational state and a guarded generator](docs/evidence/2026-09-05/overview-desktop.png)
+
 ## What matters in this model
 
 - Money uses exact minor units. AED and BHD are separate; there is no implicit currency conversion.
@@ -34,6 +44,7 @@ The optional [reporting experiment](deploy/local/lake/README.md) connects Postgr
 | [compose.yaml](compose.yaml) | Local two-replica stack and optional reporting services |
 | [Implementation plan](docs/go-service-plan.md) | Intended architecture, milestones and deployment gates; not a completion claim |
 | [Decision coverage](docs/go-service-decision-coverage.md) | Relationship to the original assessment decisions |
+| [Implementation guide](docs/ledger-lab-guide.md) | Current service, evidence, resource investigation and staged scaling plan |
 | [WORKLOG.md](WORKLOG.md) | Changes, evidence, failed checks and disclosed AI assistance |
 
 ## Status and boundaries
