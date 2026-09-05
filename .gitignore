@@ -5,6 +5,7 @@ __pycache__/
 .pyright/
 service/web/node_modules/
 service/cmd/ledger/web/app.js
+service/cmd/ledger/web/calendar.js
 service/cmd/ledger/web/preferences.js
 service/cmd/ledger/web/statement-data.js
 service/cmd/ledger/web/statement-view.js
