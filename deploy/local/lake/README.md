@@ -29,7 +29,21 @@ node service/tests/lake-reconcile.mjs ledger-lab demo
 
 It permits only the two named local projects and known runs, at most 10,000 source batches, 20,000 result rows, 32 MiB command output and a two-minute catch-up window. This is an operator test, not a scalable ongoing reporting watermark. Run it with local Docker access; it does not change source or lake records.
 
-On 2026-09-04, the fixture's 12 envelopes matched. The live check initially failed with 5,461 of 6,911 captured batches present. The CDC writer had exited after a catalog connection failure, while the reader and object store were healthy. It exited with code 0, so `on-failure:3` did not restart it. After an operator restart, the comparison passed for all 7,080 batches at a new cutoff. No conflicting envelopes or duplicate rows appeared in that compared prefix. Unit tests separately cover identical and conflicting duplicates. Automatic supervision after this clean-exit failure remains a deployment gate; the manual recovery is not proof of it.
+On 2026-09-04, the fixture's 12 envelopes matched. The live check initially failed with 5,461 of 6,911 captured batches present. The CDC writer had exited after a catalog connection failure, while the reader and object store were healthy. It exited with code 0, so the original `on-failure:3` policy did not restart it. After an operator restart, the comparison passed for all 7,080 batches at a new cutoff. No conflicting envelopes or duplicate rows appeared in that compared prefix. Unit tests separately cover identical and conflicting duplicates.
+
+## Local catalog-outage exercise
+
+The CDC container now uses `unless-stopped`, which also restarts clean process exits while respecting an explicit operator stop. This follows [Docker's restart-policy semantics](https://docs.docker.com/engine/containers/start-containers-automatically/). Existing CPU, memory and log caps remain in force. It does not impose a maximum retry count or establish the corresponding CapRover/Swarm policy; production supervision and alerting still need separate configuration.
+
+```bash
+node service/tests/lake-recovery.mjs
+```
+
+This operator-only local test checks exact project labels, briefly stops the demo's catalog/object-store container, waits up to 90 seconds to observe a CDC restart, and restores the catalog in a finally block. It then compares the live source and lake. There must be activity to exercise a failed sink commit. It never exposes a Docker socket through the public service.
+
+The first run observed an automatic CDC restart, but its first ClickHouse query timed out after catalog restoration. A separate comparison subsequently matched all 7,432 captured batches. The verifier now permits at most two retries specifically for its process-level query timeout, retaining the original source cutoff and two-minute catch-up window; conflicting data and other query errors still fail immediately. A query may finish after the catch-up deadline by up to its own 20-second process timeout. This is not a reason to increase the data limits or treat partial results as success.
+
+The repeated outage exercise passed: CDC's restart counter advanced from 1 to 2, and all 7,517 captured live batches matched after catch-up, with zero query-timeout retries. The local APIs stayed healthy. This establishes that tested outage path, not lost-slot recovery, a prolonged restart loop, host failure or production resource safety.
 
 The upstream release image index referenced a missing manifest. The working upstream build is pinned to its exact digest in Compose. Its runtime reports Iceberg 1.11.0; provenance and release suitability still need review before deployment.
 

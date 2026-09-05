@@ -48,18 +48,42 @@ const expected = new Map(
 assert.equal(expected.size, source.length);
 const deadline = Date.now() + 120000;
 let rawRows;
+let timeoutRetries = 0;
 for (;;) {
-  const text = docker([
-    "exec",
-    `${project}-clickhouse-1`,
-    "clickhouse-client",
-    "--user",
-    "ledger_owner",
-    "--password",
-    "local-analytics-only",
-    "--query",
-    `SELECT toString(b.sequence) AS sequence, envelope FROM lake.\`ledger.ledger_public_journal_batches\` AS b WHERE run_id='${run}' AND b.sequence<=${cutoff} SETTINGS max_execution_time=15, max_result_rows=20000, result_overflow_mode='throw' FORMAT JSONEachRow`,
-  ]).trim();
+  let text;
+  try {
+    text = docker([
+      "exec",
+      `${project}-clickhouse-1`,
+      "clickhouse-client",
+      "--user",
+      "ledger_owner",
+      "--password",
+      "local-analytics-only",
+      "--query",
+      `SELECT toString(b.sequence) AS sequence, envelope FROM lake.\`ledger.ledger_public_journal_batches\` AS b WHERE run_id='${run}' AND b.sequence<=${cutoff} SETTINGS max_execution_time=15, max_result_rows=20000, result_overflow_mode='throw' FORMAT JSONEachRow`,
+    ]).trim();
+  } catch (error) {
+    // A returning catalog can outlive one query deadline. Retry only that
+    // transport timeout, with the same source cutoff and a finite budget.
+    if (
+      error.code !== "ETIMEDOUT" ||
+      timeoutRetries >= 2 ||
+      Date.now() >= deadline
+    )
+      throw error;
+    timeoutRetries++;
+    console.log(
+      JSON.stringify({
+        waiting: true,
+        run,
+        cutoff,
+        query_timeout_retry: timeoutRetries,
+      }),
+    );
+    await delay(5000);
+    continue;
+  }
   const rows = text ? text.split("\n").map(JSON.parse) : [];
   rawRows = rows.length;
   const matched = matchedBatches(expected, rows);
@@ -87,6 +111,7 @@ console.log(
     source_batches: expected.size,
     lake_rows: rawRows,
     duplicate_deliveries: rawRows - expected.size,
+    query_timeout_retries: timeoutRetries,
     agreement: "every complete envelope matches at the captured source cutoff",
     scope:
       "bounded read-only local check; not storage durability, offset-loss recovery, or an ongoing production watermark",

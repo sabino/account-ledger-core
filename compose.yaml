@@ -93,7 +93,9 @@ services:
     memswap_limit: 768m
     cpus: 0.5
     pids_limit: 160
-    restart: "on-failure:3"
+    # The connector can exit 0 after a fatal sink error. Restart that case too;
+    # an explicit operator stop must still remain stopped.
+    restart: unless-stopped
     logging: {driver: json-file, options: {max-size: 5m, max-file: "2"}}
   clickhouse:
     image: clickhouse/clickhouse-server:25.8@sha256:0152dd511befe6a2c2ef53e930726179669b08116da78500b37c51c96ff5ee77
