@@ -46,6 +46,12 @@ func main() {
 		log.Fatal(e)
 	}
 	defer db.Pool.Close()
+	if raw := os.Getenv("CALENDAR_ENABLED"); raw != "" {
+		db.CalendarEnabled, e = strconv.ParseBool(raw)
+		if e != nil {
+			log.Fatal("CALENDAR_ENABLED must be a boolean")
+		}
+	}
 	if len(os.Args) > 1 && os.Args[1] == "watch" {
 		proc, disk := os.Getenv("WATCH_PROC_DIR"), os.Getenv("WATCH_DISK_PATH")
 		if proc == "" || disk == "" {

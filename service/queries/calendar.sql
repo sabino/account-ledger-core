@@ -36,3 +36,24 @@ ORDER BY j.day;
 -- name: RecordAccountPeriod :exec
 INSERT INTO account_periods(run_id,account_id,start_day,through_day,sequence,amount)
 VALUES($1,$2,$3,$4,$5,$6);
+
+-- name: NextPendingClose :one
+SELECT account_id,day FROM account_close_jobs WHERE run_id=$1 AND state='pending'
+ORDER BY day,account_id LIMIT 1;
+
+-- name: CalendarRunDay :one
+SELECT day FROM runs WHERE id=$1 AND profile='live' AND NOT finalized;
+
+-- name: CalendarDue :one
+SELECT COALESCE(c.eps>0 AND r.day<366 AND
+ COALESCE((SELECT max(recorded_at) FROM day_transitions WHERE run_id=r.id),r.created_at)
+ + interval '5 minutes' <= clock_timestamp(),false)::boolean AS due
+FROM runs r JOIN controls c ON c.run_id=r.id WHERE r.id=$1;
+
+-- name: CalendarStatus :one
+SELECT r.day,
+ (SELECT count(*) FROM account_close_jobs WHERE run_id=r.id AND state='pending') AS pending,
+ (SELECT count(*) FROM account_close_jobs WHERE run_id=r.id AND state='blocked') AS blocked,
+ (COALESCE((SELECT max(recorded_at) FROM day_transitions WHERE run_id=r.id),r.created_at)
+ + interval '5 minutes')::timestamptz AS next_transition_at
+FROM runs r WHERE r.id=$1;

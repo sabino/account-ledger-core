@@ -14,7 +14,7 @@ import (
 
 // Admit counts all public commands across both instances, including invalid ones.
 func (s *Store) Admit(ctx context.Context) error {
-	admitted, err := s.Queries.Admit(ctx)
+	admitted, err := s.Queries.Admit(ctx, "demo")
 	if err != nil {
 		return err
 	}
@@ -72,6 +72,9 @@ func (s *Store) Workers(ctx context.Context) {
 		case <-slow.C:
 			job, cancel := context.WithTimeout(ctx, 3*time.Second)
 			_ = s.Guard(job)
+			if s.CalendarEnabled {
+				_ = s.CalendarStep(job, "demo")
+			}
 			var memory runtime.MemStats
 			runtime.ReadMemStats(&memory)
 			_ = s.Queries.Heartbeat(job, db.HeartbeatParams{ID: s.Instance, HeapBytes: int64(memory.HeapAlloc)})
@@ -109,7 +112,12 @@ func (s *Store) Status(ctx context.Context) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	calendar, err := s.Queries.CalendarStatus(ctx, "demo")
+	if err != nil {
+		return nil, err
+	}
 	return map[string]any{"eps": state.Eps, "generated": fmt.Sprint(state.Ordinal),
+		"calendar": map[string]any{"enabled": s.CalendarEnabled, "day": calendar.Day, "pending": calendar.Pending, "blocked": calendar.Blocked, "next_transition_at": calendar.NextTransitionAt, "day_seconds": 300, "period_days": simulationPeriodDays},
 		"sequence": fmt.Sprint(state.Position), "guard_reason": state.GuardReason,
 		"pause_reason": state.PauseReason, "guard_fresh": state.Fresh,
 		"pending_deliveries": state.Pending, "database_bytes": state.DatabaseBytes,

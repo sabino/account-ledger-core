@@ -3,10 +3,10 @@ UPDATE controls SET
   budget_used = CASE WHEN budget_second = floor(extract(epoch FROM clock_timestamp()))::bigint
     THEN budget_used + 1 ELSE 1 END,
   budget_second = floor(extract(epoch FROM clock_timestamp()))::bigint
-WHERE run_id = 'demo' AND pause_reason = '' AND guard_until > now()
-  AND EXISTS (SELECT FROM host_guard WHERE id AND safe_until > now())
+WHERE controls.run_id = $1 AND pause_reason = '' AND guard_until > clock_timestamp()
+  AND EXISTS (SELECT FROM host_guard WHERE id AND safe_until > clock_timestamp())
   AND (budget_second <> floor(extract(epoch FROM clock_timestamp()))::bigint OR budget_used < 20)
-  AND (SELECT position FROM journal_clock WHERE run_id = 'demo') < 100000;
+  AND (SELECT position FROM journal_clock j WHERE j.run_id = $1) < 100000;
 
 -- name: DatabaseFootprint :one
 SELECT pg_database_size(current_database())::bigint AS size,

@@ -19,6 +19,7 @@ import (
 var migrations embed.FS
 
 type Store struct {
+	CalendarEnabled  bool
 	SendNotification func(context.Context, []byte) error
 	Pool             *pgxpool.Pool
 	Queries          *db.Queries

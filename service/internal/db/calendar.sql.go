@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const advanceRunDay = `-- name: AdvanceRunDay :exec
@@ -21,6 +23,59 @@ type AdvanceRunDayParams struct {
 func (q *Queries) AdvanceRunDay(ctx context.Context, arg AdvanceRunDayParams) error {
 	_, err := q.db.Exec(ctx, advanceRunDay, arg.ID, arg.Day)
 	return err
+}
+
+const calendarDue = `-- name: CalendarDue :one
+SELECT COALESCE(c.eps>0 AND r.day<366 AND
+ COALESCE((SELECT max(recorded_at) FROM day_transitions WHERE run_id=r.id),r.created_at)
+ + interval '5 minutes' <= clock_timestamp(),false)::boolean AS due
+FROM runs r JOIN controls c ON c.run_id=r.id WHERE r.id=$1
+`
+
+func (q *Queries) CalendarDue(ctx context.Context, id string) (bool, error) {
+	row := q.db.QueryRow(ctx, calendarDue, id)
+	var due bool
+	err := row.Scan(&due)
+	return due, err
+}
+
+const calendarRunDay = `-- name: CalendarRunDay :one
+SELECT day FROM runs WHERE id=$1 AND profile='live' AND NOT finalized
+`
+
+func (q *Queries) CalendarRunDay(ctx context.Context, id string) (int32, error) {
+	row := q.db.QueryRow(ctx, calendarRunDay, id)
+	var day int32
+	err := row.Scan(&day)
+	return day, err
+}
+
+const calendarStatus = `-- name: CalendarStatus :one
+SELECT r.day,
+ (SELECT count(*) FROM account_close_jobs WHERE run_id=r.id AND state='pending') AS pending,
+ (SELECT count(*) FROM account_close_jobs WHERE run_id=r.id AND state='blocked') AS blocked,
+ (COALESCE((SELECT max(recorded_at) FROM day_transitions WHERE run_id=r.id),r.created_at)
+ + interval '5 minutes')::timestamptz AS next_transition_at
+FROM runs r WHERE r.id=$1
+`
+
+type CalendarStatusRow struct {
+	Day              int32              `json:"day"`
+	Pending          int64              `json:"pending"`
+	Blocked          int64              `json:"blocked"`
+	NextTransitionAt pgtype.Timestamptz `json:"next_transition_at"`
+}
+
+func (q *Queries) CalendarStatus(ctx context.Context, id string) (CalendarStatusRow, error) {
+	row := q.db.QueryRow(ctx, calendarStatus, id)
+	var i CalendarStatusRow
+	err := row.Scan(
+		&i.Day,
+		&i.Pending,
+		&i.Blocked,
+		&i.NextTransitionAt,
+	)
+	return i, err
 }
 
 const findDayTransition = `-- name: FindDayTransition :one
@@ -65,6 +120,23 @@ func (q *Queries) LockAccountCloseJob(ctx context.Context, arg LockAccountCloseJ
 		&i.State,
 		&i.Reason,
 	)
+	return i, err
+}
+
+const nextPendingClose = `-- name: NextPendingClose :one
+SELECT account_id,day FROM account_close_jobs WHERE run_id=$1 AND state='pending'
+ORDER BY day,account_id LIMIT 1
+`
+
+type NextPendingCloseRow struct {
+	AccountID string `json:"account_id"`
+	Day       int32  `json:"day"`
+}
+
+func (q *Queries) NextPendingClose(ctx context.Context, runID string) (NextPendingCloseRow, error) {
+	row := q.db.QueryRow(ctx, nextPendingClose, runID)
+	var i NextPendingCloseRow
+	err := row.Scan(&i.AccountID, &i.Day)
 	return i, err
 }
 

@@ -25,6 +25,10 @@ const simulationPeriodDays int32 = 6
 // the sum of rounded daily amounts. The final accrual, balanced posting, period,
 // completed job and outbox commit together before next-day spending is allowed.
 func (s *Store) CloseAccountDay(ctx context.Context, runID, accountID string, day int32) (Result, error) {
+	return s.closeAccountDay(ctx, runID, accountID, day, false)
+}
+
+func (s *Store) closeAccountDay(ctx context.Context, runID, accountID string, day int32, scheduled bool) (Result, error) {
 	if day < 1 || day >= 366 || len(accountID) == 0 || len(accountID) > 80 {
 		return Result{}, ErrCalendarInput
 	}
@@ -40,6 +44,11 @@ func (s *Store) CloseAccountDay(ctx context.Context, runID, accountID string, da
 	}
 	if run.Profile != "live" || run.Finalized || day >= run.Day {
 		return Result{}, ErrCalendarInput
+	}
+	if scheduled {
+		if err = admitCalendar(ctx, q, runID); err != nil {
+			return Result{}, err
+		}
 	}
 	command := Command{ID: fmt.Sprintf("system:close:%d:%s", day, accountID), Kind: "account_close", Account: accountID, BookedDay: run.Day, ValueDay: day}
 	hash := fmt.Sprintf("close/%d/%s/%s", day, accountID, run.Policy)
@@ -177,6 +186,10 @@ func (s *Store) CloseAccountDay(ctx context.Context, runID, accountID string, da
 // close job in the same transaction as the new day. Repeating the same transition
 // is a no-op even after the run has advanced further.
 func (s *Store) AdvanceDay(ctx context.Context, runID string, from int32) error {
+	return s.advanceDay(ctx, runID, from, false)
+}
+
+func (s *Store) advanceDay(ctx context.Context, runID string, from int32, scheduled bool) error {
 	if from < 1 || from >= 366 {
 		return ErrCalendarInput
 	}
@@ -203,6 +216,20 @@ func (s *Store) AdvanceDay(ctx context.Context, runID string, from int32) error 
 	if run.Day != from {
 		return ErrCalendarInput
 	}
+	if scheduled {
+		// The exclusive lifecycle lock makes the due-time decision and day
+		// transition indivisible across replicas. No wall-clock catch-up loop.
+		due, err := q.CalendarDue(ctx, runID)
+		if err != nil {
+			return err
+		}
+		if !due {
+			return nil
+		}
+		if err = admitCalendar(ctx, q, runID); err != nil {
+			return err
+		}
+	}
 	pending, err := q.PendingRunCloses(ctx, runID)
 	if err != nil {
 		return err
@@ -220,4 +247,40 @@ func (s *Store) AdvanceDay(ctx context.Context, runID string, from int32) error 
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// CalendarStep executes at most one close or one due transition. Replicas may
+// choose the same job; its existing transaction identity makes this harmless.
+// Pending work drains even when generation is paused, but never without host
+// and database admission. Blocked jobs require a policy/operator resolution.
+func (s *Store) CalendarStep(ctx context.Context, runID string) error {
+	job, err := s.Queries.NextPendingClose(ctx, runID)
+	if err == nil {
+		_, err = s.closeAccountDay(ctx, runID, job.AccountID, job.Day, true)
+		return err
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	day, err := s.Queries.CalendarRunDay(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if day >= 366 {
+		return nil
+	}
+	return s.advanceDay(ctx, runID, day, true)
+}
+
+// Same shared 20-operation/second budget as public/generator traffic. Held
+// after the lifecycle lock and before operation/account/journal locks.
+func admitCalendar(ctx context.Context, q *db.Queries, runID string) error {
+	n, err := q.Admit(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrCapacity
+	}
+	return nil
 }
