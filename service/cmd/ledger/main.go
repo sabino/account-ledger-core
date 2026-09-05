@@ -98,6 +98,14 @@ func main() {
 				status = 429
 				message = e.Error()
 			}
+			if errors.Is(e, store.ErrStatementInput) {
+				status = 400
+				message = e.Error()
+			}
+			if errors.Is(e, store.ErrStatementAccount) {
+				status = 404
+				message = e.Error()
+			}
 			if status == 503 {
 				log.Printf("request failed: %v", e)
 			}
@@ -122,6 +130,17 @@ func main() {
 	})
 	mux.HandleFunc("GET /api/accounts", func(w http.ResponseWriter, r *http.Request) {
 		value, err := db.Accounts(r.Context(), "demo")
+		reply(w, value, err)
+	})
+	mux.HandleFunc("GET /api/statements", func(w http.ResponseWriter, r *http.Request) {
+		request, err := parseStatementRequest(r.URL.Query())
+		if err != nil {
+			reply(w, nil, err)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		value, err := db.Statement(ctx, "demo", request)
 		reply(w, value, err)
 	})
 	mux.HandleFunc("GET /api/analytics", func(w http.ResponseWriter, r *http.Request) {

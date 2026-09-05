@@ -54,6 +54,16 @@ Light, dark and system appearance settings are available in the header. Theme an
 
 On 2026-09-04, all six routes were visually reviewed in Chromium at desktop and mobile sizes. Geometry checks covered all six routes in both themes at widths 1920, 1100, 834 and 390: no document-level horizontal overflow or overlapping panels was found. The time-laboratory table intentionally scrolls within its own region on small screens. Checks also covered persistent theme/sidebar choices, system-color changes, reduced motion, account expansion, mobile modal focus restoration and the transfer inspector at a 1450px viewport. Five pure preference tests run in CI. Browser review caught percentage bars blocked by CSP; setting their measured widths through DOM properties fixed the display without relaxing the policy. This evidence is not a cross-browser or full accessibility audit.
 
+## Complete posted statements API
+
+`GET /api/statements?account=ACC-001&limit=50` captures the current committed journal cutoff and returns monetary posting lines in `(sequence, leg)` order. A following page supplies that same `cutoff` plus `after_sequence` and `after_leg` from `next`. A null `next` means the statement is complete. Limits are 1–100 lines per request; invalid parameters return 400 and an unknown account returns 404. Explicit `cutoff=0` returns an empty prefix, not the latest state.
+
+Each page contains exact minor-unit strings, accounting debits/credits, normal-side balance changes, running balances, booking/value days and recorded timestamps. The response also gives full-prefix debit/credit totals and closing balance, plus the page's opening/closing balances. Liability balances increase on credits; asset balances increase on debits. Currencies are never combined. This is a posted statement, not available funds after holds, a value-date-filtered projection, or a complete history of rejected HTTP attempts.
+
+Read-only repeatable-read transactions keep each page internally consistent. The fixed cutoff and immutable postings keep later commits out of subsequent pages. Cursor pagination includes the posting leg so a multi-part credit cannot be skipped at a page boundary. Prefix totals still scan the account's qualifying postings; the endpoint has a two-second deadline, not an unlimited historical-query budget.
+
+Run `node service/tests/statements-smoke.mjs` after rebuilding the local APIs. It traverses one AED and one BHD account, checks every running balance and page boundary, and tests invalid queries without submitting commands or changing generation. Requests are paced below the local proxy's read-rate limit. The Accounts UI still uses its recent-entry preview; statement browsing and export integration remain pending.
+
 ## CDC source visibility
 
 `GET /api/status` reports `cdc_source` separately from financial readiness. Its state is `absent` when the configured slot is not present, `inactive` when it has no consumer, `streaming` when PostgreSQL reports an active consumer, or `invalidated` when PostgreSQL reports the slot lost/invalid. Absence alone cannot distinguish a disabled optional profile from a missing expected slot. Retained WAL bytes are exact decimal text, or null when the source restart position is unknown. Unknown is not zero.
