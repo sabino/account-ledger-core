@@ -1,0 +1,2 @@
+s3tables.bucket -create -name ledger-lake -format ICEBERG -account 000000000000
+s3tables.bucket -get -name ledger-lake -account 000000000000

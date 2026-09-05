@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Ledger Lab · Live workspace</title>
+    <meta
+      name="description"
+      content="A live, bounded double-entry simulation. Follow money, decisions and their accounting evidence."
+    />
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body data-view="overview">
+    <a class="skip-link" href="#workspace">Skip to workspace</a>
+    <div class="ambient-field" aria-hidden="true"></div>
+    <button
+      id="nav-backdrop"
+      class="backdrop"
+      aria-label="Close navigation"
+      hidden
+    ></button>
+    <aside class="sidebar" id="navigation" aria-label="Application navigation">
+      <a class="brand" href="#overview"
+        ><span class="brand-mark">◈</span
+        ><span>Ledger Lab<small>Accounting experiment</small></span></a
+      >
+      <button
+        id="sidebar-toggle"
+        class="sidebar-toggle secondary"
+        aria-controls="navigation"
+        aria-expanded="true"
+        aria-label="Collapse sidebar"
+      >
+        <span aria-hidden="true">⇤</span
+        ><span class="collapse-label">Collapse sidebar</span>
+      </button>
+      <nav>
+        <a href="#overview" data-route="overview" title="Overview"
+          ><span class="nav-icon" aria-hidden="true">◫</span
+          ><span>Overview</span></a
+        >
+        <a href="#journal" data-route="journal" title="Journal"
+          ><span class="nav-icon" aria-hidden="true">≡</span
+          ><span>Journal</span></a
+        >
+        <a href="#accounts" data-route="accounts" title="Accounts"
+          ><span class="nav-icon" aria-hidden="true">▤</span
+          ><span>Accounts</span></a
+        >
+        <a href="#transfers" data-route="transfers" title="Transfers"
+          ><span class="nav-icon" aria-hidden="true">⇄</span
+          ><span>Transfers</span></a
+        >
+        <a href="#system" data-route="system" title="System and recovery"
+          ><span class="nav-icon" aria-hidden="true">⌘</span
+          ><span>System &amp; recovery</span></a
+        >
+        <a href="#time" data-route="time" title="Time laboratory"
+          ><span class="nav-icon" aria-hidden="true">◷</span
+          ><span>Time laboratory</span></a
+        >
+      </nav>
+      <div class="sidebar-note">
+        <span class="live-dot"></span> Synthetic money
+        <p>Real accounting rules.<br />No real customer funds.</p>
+        <a
+          href="https://github.com/sabino/account-ledger-core"
+          target="_blank"
+          rel="noreferrer"
+          >Source code ↗</a
+        >
+      </div>
+    </aside>
+    <div class="app-shell">
+      <header class="app-header">
+        <button
+          id="menu-toggle"
+          class="icon-button"
+          aria-label="Open navigation"
+          aria-controls="navigation"
+          aria-expanded="false"
+        >
+          ☰
+        </button>
+        <div class="heading">
+          <h1 id="view-title" tabindex="-1">Ledger Lab</h1>
+          <p id="view-subtitle">
+            Live double-entry. Every decision leaves evidence.
+          </p>
+        </div>
+        <div class="header-status">
+          <span id="connection" role="status">Connecting…</span
+          ><small id="clock">—</small>
+        </div>
+        <div class="theme-picker" role="group" aria-label="Color theme">
+          <button
+            class="theme-choice"
+            data-theme-choice="light"
+            aria-label="Light theme"
+            title="Light theme"
+            aria-pressed="false"
+          >
+            ☀
+          </button>
+          <button
+            class="theme-choice"
+            data-theme-choice="dark"
+            aria-label="Dark theme"
+            title="Dark theme"
+            aria-pressed="false"
+          >
+            ☾
+          </button>
+          <button
+            class="theme-choice"
+            data-theme-choice="system"
+            aria-label="System theme"
+            title="System theme"
+            aria-pressed="true"
+          >
+            ◐
+          </button>
+        </div>
+        <a class="action-link primary-action" href="#transfers"
+          >＋ New transfer</a
+        >
+      </header>
+      <div class="workspace-toolbar">
+        <label class="global-search"
+          ><span aria-hidden="true">⌕</span
+          ><input
+            id="search"
+            type="search"
+            placeholder="Search events, accounts, or references…"
+            aria-label="Search latest journal preview"
+          /><kbd>Ctrl K</kbd></label
+        >
+        <span id="view-context" class="view-context"
+          >Demo ledger / live overview</span
+        >
+        <div class="view-controls">
+          <label
+            >Currency<select id="view-currency">
+              <option value="AED">AED · 2 decimals</option>
+              <option value="BHD">BHD · 3 decimals</option>
+            </select></label
+          ><label
+            >Command window<select id="view-window">
+              <option value="10m">Last 10 minutes</option>
+              <option value="1h" selected>Last hour</option>
+              <option value="24h">Last 24 hours</option>
+            </select></label
+          ><button
+            id="effects-toggle"
+            class="icon-button secondary"
+            aria-label="Turn visual effects off"
+            aria-pressed="true"
+            title="Visual effects"
+          >
+            ✧
+          </button>
+        </div>
+      </div>
+      <main id="workspace" tabindex="-1">
+        <p id="admission-status" class="admission-status" role="status">
+          Checking service admission…
+        </p>
+        <section
+          id="money-overview"
+          class="money-overview"
+          aria-labelledby="money-title"
+        >
+          <div class="money-overview-head">
+            <div>
+              <h2 id="money-title">Money overview</h2>
+              <span id="money-asof"
+                >Waiting for an authoritative snapshot…</span
+              >
+            </div>
+            <div class="money-controls">
+              <div class="segmented" role="group" aria-label="Money period">
+                <button data-money-period="today" aria-pressed="true">
+                  Today</button
+                ><button data-money-period="run" aria-pressed="false">
+                  This run
+                </button>
+              </div>
+              <button
+                id="freeze-money"
+                class="icon-button secondary"
+                aria-label="Pause monetary display"
+                aria-pressed="false"
+              >
+                Ⅱ</button
+              ><button id="money-how" class="text-button">How counted ⓘ</button>
+            </div>
+          </div>
+          <div id="currency-grid" class="currency-grid"></div>
+          <div class="money-overview-foot">
+            <span id="money-note"
+              >Separate currencies. Every committed economic operation counted
+              once.</span
+            ><button id="money-daily" class="text-button">
+              Daily totals ▤
+            </button>
+          </div>
+        </section>
+        <section class="metrics" aria-label="Live counters">
+          <article class="metric">
+            <span>Recorded decisions</span><strong id="event-total">—</strong
+            ><small>Selected window / currency</small>
+            <div id="metric-spark" class="spark"></div>
+          </article>
+          <article class="metric">
+            <span>Recorded batches</span><strong id="batches">—</strong
+            ><small>All durable outcomes · retained ledger</small>
+          </article>
+          <article class="metric">
+            <span>Balance checks</span
+            ><strong id="reconciled">Not checked</strong
+            ><small>Last requested reconciliation</small>
+          </article>
+          <article class="metric">
+            <span>Generator target</span><strong id="rate-kpi">—</strong
+            ><small>Shared events / second</small>
+          </article>
+        </section>
+        <button
+          id="more-metrics"
+          class="secondary more-metrics"
+          aria-expanded="false"
+        >
+          More metrics
+        </button>
+        <div
+          id="route-grid"
+          class="workspace-grid"
+          aria-label="Overview workspace"
+        ></div>
+        <div id="panel-storage" hidden>
+          <section class="panel simulation" id="simulation-panel">
+            <div class="section-heading">
+              <h2>Shared simulation</h2>
+              <span class="badge">Synthetic</span>
+            </div>
+            <div class="rate">
+              <strong id="rate">—</strong><span>events / second</span>
+            </div>
+            <label for="eps">Target rate · shared by every visitor</label
+            ><input id="eps" type="range" min="0" max="20" value="1" />
+            <div class="range-labels">
+              <span>Paused</span><span>20 max</span>
+            </div>
+            <div class="button-row">
+              <button id="apply-rate" disabled>Apply rate</button
+              ><button id="pause-simulation" class="secondary">Pause</button>
+            </div>
+            <p class="note">
+              Boosts return to 1 event/sec after 60 seconds. Host safety limits
+              always win.
+            </p>
+          </section>
+          <section class="panel chart-card" id="chart-panel">
+            <div class="section-heading">
+              <div>
+                <h2 id="chart-title">Value processed</h2>
+                <p class="note" id="chart-subtitle">
+                  Exact currency amounts, by processing time
+                </p>
+              </div>
+              <div class="chart-controls">
+                <select id="chart-measure" aria-label="Chart measure">
+                  <option value="AED">AED value</option>
+                  <option value="BHD">BHD value</option>
+                  <option value="commands">Command counts</option>
+                </select>
+                <div
+                  id="value-windows"
+                  class="segmented"
+                  role="group"
+                  aria-label="Processed value time window"
+                >
+                  <button data-value-window="1h" aria-pressed="false">1H</button
+                  ><button data-value-window="6h" aria-pressed="false">
+                    6H</button
+                  ><button data-value-window="today" aria-pressed="true">
+                    Today
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div id="command-legend" class="chart-legend" hidden>
+              <span><i class="legend-dot"></i>All decisions</span
+              ><span
+                ><i class="legend-dot negative"></i>Declined + rejected</span
+              >
+            </div>
+            <div id="money-chart" class="chart"></div>
+            <div id="events-chart" class="chart"></div>
+            <p class="note" id="analytics-status" role="status">
+              Loading recorded decisions…
+            </p>
+          </section>
+          <section class="panel totals-panel" id="totals-panel">
+            <div class="section-heading">
+              <h2>Window totals</h2>
+              <span id="totals-currency" class="badge">AED</span>
+            </div>
+            <div id="outcome-bars" class="bar-list"></div>
+            <dl class="compact-facts">
+              <div>
+                <dt>Accepted rate</dt>
+                <dd id="accepted-rate">—</dd>
+              </div>
+              <div>
+                <dt>Declined / rejected</dt>
+                <dd id="event-negative">—</dd>
+              </div>
+              <div>
+                <dt>Pending delivery</dt>
+                <dd id="pending">—</dd>
+              </div>
+              <div>
+                <dt>Database footprint</dt>
+                <dd id="db-size">—</dd>
+              </div>
+            </dl>
+            <h3>Processing replicas</h3>
+            <div id="instance-bars" class="bar-list"></div>
+            <p class="note">
+              Journal decisions, not HTTP attempts. Identical retries do not add
+              a batch.
+            </p>
+          </section>
+          <section class="panel history-preview" id="history-preview">
+            <div class="section-heading">
+              <h2>Time travel</h2>
+              <span class="badge">Isolated replay</span>
+            </div>
+            <label for="preview-knowledge"
+              >Knowledge cutoff
+              <strong id="preview-knowledge-label">12 / 12</strong></label
+            ><input
+              id="preview-knowledge"
+              type="range"
+              min="0"
+              max="12"
+              value="12"
+            /><strong id="preview-balance" class="stat">—</strong>
+            <p class="note">
+              Day 6 · later records can change an earlier projection.
+            </p>
+            <a class="text-button" href="#time">Open the six-day laboratory</a>
+          </section>
+          <section class="panel" id="accounts-view">
+            <div class="section-heading">
+              <h2>Customer balances</h2>
+              <span id="account-count" class="badge">—</span>
+            </div>
+            <strong id="customer-total" class="stat">—</strong>
+            <p class="note" id="held-total">Current posted balances</p>
+            <div id="account-list" class="account-list"></div>
+            <p class="note panel-footnote">
+              Current snapshot. Each ledger account holds one currency.
+            </p>
+          </section>
+          <section class="panel account-directory" id="account-directory">
+            <div class="section-heading">
+              <div>
+                <h2>Account directory</h2>
+                <p class="note">
+                  Balances are current. Open an account for its latest journal
+                  entries.
+                </p>
+              </div>
+              <label class="filter"
+                ><span class="sr-only">Account group</span
+                ><select id="account-group">
+                  <option value="all">All account groups</option>
+                  <option value="customer">Customer accounts</option>
+                  <option value="internal">Internal accounts</option>
+                </select></label
+              >
+            </div>
+            <div id="account-groups" class="account-groups">
+              <p class="note">Loading accounts…</p>
+            </div>
+            <p class="note">
+              Customer deposits are liabilities of the simulated bank. Reserved
+              funds are part of a customer balance, not another posted account.
+            </p>
+          </section>
+          <section class="panel health-panel" id="health-panel">
+            <div class="section-heading">
+              <h2>Live system health</h2>
+              <span class="badge">HEARTBEATS</span>
+            </div>
+            <div id="replicas" class="replicas">
+              <p class="note">Waiting for instances…</p>
+            </div>
+            <div class="health-line">
+              <span>Outbox</span><strong id="outbox-health">—</strong>
+            </div>
+            <h3>Service admission</h3>
+            <div id="guard" class="guard-status" role="status">
+              Checking safety…
+            </div>
+            <dl id="host-facts" class="decision-facts">
+              <dt>Evidence</dt>
+              <dd>Loading…</dd>
+            </dl>
+            <h3>Simulation calendar</h3>
+            <div class="health-line">
+              <span>Current day</span><strong id="calendar-day">—</strong>
+            </div>
+            <p id="calendar-progress" class="note" role="status">
+              Waiting for calendar evidence…
+            </p>
+          </section>
+          <section class="panel transfer" id="transfer-view">
+            <div class="section-heading">
+              <h2>Move money</h2>
+              <span class="badge">ATOMIC</span>
+            </div>
+            <form id="transfer-form">
+              <label for="source">From account</label
+              ><select id="source" required></select>
+              <div class="account-balance" id="source-balance">—</div>
+              <label for="destination">To account · same currency</label
+              ><select id="destination" required></select
+              ><label for="amount">Amount</label>
+              <div class="amount-row">
+                <input
+                  id="amount"
+                  type="text"
+                  inputmode="decimal"
+                  value="10.00"
+                  required
+                  autocomplete="off"
+                /><span id="currency">AED</span>
+              </div>
+              <button type="submit" disabled>
+                Send transfer <span>→</span>
+              </button>
+              <p id="transfer-day" class="note">Checking the simulation day…</p>
+            </form>
+            <p class="note">
+              No money is created. Both sides commit together—or neither does.
+            </p>
+            <div id="transfer-result" role="status"></div>
+          </section>
+          <section class="panel journal-panel" id="audit">
+            <div class="section-heading">
+              <h2>Audit trail <span class="muted">/ live journal</span></h2>
+              <div class="journal-controls">
+                <button
+                  id="journal-pause"
+                  class="icon-button secondary"
+                  aria-pressed="false"
+                  aria-label="Pause journal display"
+                >
+                  Ⅱ</button
+                ><label class="filter"
+                  ><span class="sr-only">Account filter</span
+                  ><select id="statement">
+                    <option value="">All accounts</option>
+                  </select></label
+                >
+              </div>
+            </div>
+            <div class="table-scroll journal-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Sequence / time</th>
+                    <th>Command</th>
+                    <th>Outcome</th>
+                    <th>Debit</th>
+                    <th>Credit</th>
+                    <th>Instance</th>
+                  </tr>
+                </thead>
+                <tbody id="journal"></tbody>
+              </table>
+            </div>
+            <div id="journal-cards" class="journal-cards"></div>
+            <p id="journal-scope" class="note panel-footnote">
+              Latest 60 fetched batches, filtered by currency. Event-window
+              selection applies to charts, not this preview.
+            </p>
+          </section>
+          <aside
+            id="inspector-shell"
+            class="panel inspector-shell"
+            aria-label="Selected event details"
+          >
+            <div class="section-heading">
+              <h2>Event / batch details</h2>
+              <button
+                id="close-inspector"
+                class="icon-button secondary"
+                aria-label="Close event details"
+              >
+                ×
+              </button>
+            </div>
+            <div
+              class="inspector-tabs"
+              role="tablist"
+              aria-label="Event detail sections"
+            >
+              <button
+                role="tab"
+                id="tab-summary"
+                aria-selected="true"
+                aria-controls="event-inspector"
+                data-detail="summary"
+              >
+                Summary</button
+              ><button
+                role="tab"
+                id="tab-accounting"
+                aria-selected="false"
+                aria-controls="event-inspector"
+                data-detail="accounting"
+                tabindex="-1"
+              >
+                Accounting</button
+              ><button
+                role="tab"
+                id="tab-evidence"
+                aria-selected="false"
+                aria-controls="event-inspector"
+                data-detail="evidence"
+                tabindex="-1"
+              >
+                Evidence
+              </button>
+            </div>
+            <div
+              id="event-inspector"
+              class="event-inspector"
+              role="tabpanel"
+              aria-labelledby="tab-summary"
+            >
+              <div class="empty-state">
+                <span>◇</span>
+                <h3>Select a decision</h3>
+                <p>
+                  Its outcome, money movements and recorded evidence stay
+                  together here.
+                </p>
+              </div>
+            </div>
+          </aside>
+          <section class="panel flow" id="system-view">
+            <div class="section-heading">
+              <h2>Request, commit, delivery</h2>
+              <span class="badge">Conceptual flow</span>
+            </div>
+            <div class="service-path">
+              <div class="node">Browser request<span>Public API</span></div>
+              <span class="path-arrow" aria-hidden="true">→</span>
+              <div class="node">
+                Either Go replica<span>Existing load balancer</span>
+              </div>
+              <span class="path-arrow" aria-hidden="true">→</span>
+              <div class="node database">
+                PostgreSQL<span
+                  >Account locks + atomic journal, balances and outbox</span
+                >
+              </div>
+              <span class="path-arrow" aria-hidden="true">→</span>
+              <div class="node">
+                Notification inbox<span
+                  >Signed HTTP, retries and deduplication</span
+                >
+              </div>
+            </div>
+            <p class="note">
+              Two applications, one database. Instance recovery is not database
+              high availability.
+            </p>
+          </section>
+          <section class="panel" id="cdc-panel">
+            <h2>Reporting source connection</h2>
+            <dl id="cdc-facts" class="decision-facts">
+              <dt>CDC source</dt>
+              <dd>Not observed yet</dd>
+            </dl>
+            <p class="note">
+              A connected PostgreSQL slot is not proof that lake data is
+              current. This panel does not measure Iceberg or ClickHouse
+              freshness.
+            </p>
+          </section>
+          <section class="panel" id="recovery-panel">
+            <h2>Pause delivery, not money</h2>
+            <p>
+              Pause notifications for 15 seconds. Transfers continue; the
+              backlog should drain after the pause.
+            </p>
+            <button id="pause-outbox" class="secondary" disabled>
+              Pause delivery · 15 sec
+            </button>
+            <p class="note">
+              One experiment per minute, shared globally. No host or container
+              controls are exposed.
+            </p>
+          </section>
+          <section class="panel" id="reconciliation-panel">
+            <h2>Check, don’t assume</h2>
+            <p>
+              Compare account balances with the journal, verify every batch
+              balances, and check reserved funds against active holds.
+            </p>
+            <button id="reconcile" class="secondary">Run reconciliation</button>
+            <pre id="reconciliation">No check requested yet.</pre>
+          </section>
+          <section class="panel time-lab" id="time-view">
+            <div class="section-heading">
+              <h2>The six-day time laboratory</h2>
+              <span class="badge">ISOLATED REPLAY</span>
+            </div>
+            <p>
+              A later record changes what we calculate about an earlier day. It
+              does not edit an existing record. Move the cutoff to see what the
+              ledger knew.
+            </p>
+            <label for="knowledge"
+              >Include committed batches through
+              <strong id="knowledge-label">12</strong></label
+            ><input id="knowledge" type="range" min="0" max="12" value="12" />
+            <div class="range-labels">
+              <span>No records known</span><span>Capitalization included</span>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Value day</th>
+                    <th>AED customer balance</th>
+                    <th>BHD customer balance</th>
+                  </tr>
+                </thead>
+                <tbody id="fixture-days"></tbody>
+              </table>
+            </div>
+            <p class="note">
+              Batch 7: E7 and fees for Days 2 and 4. Batch 9: Day-5 fee. Batch
+              10: E9 reverses principal. Batch 12: daily rounded interest is
+              capitalized.
+            </p>
+            <pre id="fixture-batch">Loading committed evidence…</pre>
+          </section>
+          <section class="panel scope" id="scope-panel">
+            <h2>A proof of concept, not a bank.</h2>
+            <p>
+              Transfers, holds, final partial capture, exact minor-unit
+              arithmetic, durable retries and the six-day scenario are
+              executable here. There is no real money or external bank statement
+              matching.
+            </p>
+            <p>
+              Health indicators above describe only the data they name. A
+              heartbeat is not a latency measurement; a balanced journal is not
+              proof that an external bank agrees.
+            </p>
+            <a
+              href="https://github.com/sabino/account-ledger-core"
+              target="_blank"
+              rel="noreferrer"
+              >Implementation and explicit boundaries ↗</a
+            >
+          </section>
+        </div>
+      </main>
+      <footer>
+        <span
+          ><i class="live-dot"></i
+          ><span id="footer-state">Connecting to recorded activity…</span></span
+        ><span>Two replicas · one ledger · synthetic money</span>
+      </footer>
+    </div>
+    <button
+      id="inspector-backdrop"
+      class="backdrop"
+      aria-label="Close event details"
+      hidden
+    ></button>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <dialog
+      id="money-dialog"
+      class="money-dialog"
+      aria-labelledby="money-dialog-title"
+    >
+      <div class="section-heading">
+        <h2 id="money-dialog-title">How value is counted</h2>
+        <button id="money-dialog-close" class="secondary" autofocus>
+          Close
+        </button>
+      </div>
+      <div id="money-dialog-content"></div>
+    </dialog>
+    <dialog
+      id="statement-dialog"
+      class="statement-dialog"
+      aria-labelledby="statement-title"
+      aria-describedby="statement-context"
+    >
+      <header class="statement-header">
+        <div>
+          <p id="statement-context">Posted statement</p>
+          <h2 id="statement-title">Account statement</h2>
+          <p id="statement-cutoff"></p>
+        </div>
+        <button
+          id="statement-close"
+          class="secondary"
+          autofocus
+          aria-label="Close statement"
+        >
+          Close
+        </button>
+      </header>
+      <div class="statement-summary">
+        <div>
+          <span>Posted balance at cutoff</span
+          ><strong id="statement-closing">—</strong>
+        </div>
+        <div>
+          <span>Total debits</span><strong id="statement-debits">—</strong>
+        </div>
+        <div>
+          <span>Total credits</span><strong id="statement-credits">—</strong>
+        </div>
+      </div>
+      <div class="statement-toolbar">
+        <p id="statement-side-note"></p>
+        <div class="button-row">
+          <button id="statement-refresh" class="secondary">
+            Refresh snapshot</button
+          ><button id="statement-export" class="secondary">
+            Export complete CSV</button
+          ><button id="statement-cancel-export" class="secondary" hidden>
+            Cancel export
+          </button>
+        </div>
+      </div>
+      <p
+        id="statement-message"
+        class="statement-message"
+        role="status"
+        aria-live="polite"
+      ></p>
+      <div
+        id="statement-scroll"
+        class="statement-scroll"
+        tabindex="0"
+        role="region"
+        aria-label="Statement posting lines"
+      >
+        <table>
+          <thead>
+            <tr>
+              <th>Entry / recorded time</th>
+              <th>Movement / dates</th>
+              <th>Debit</th>
+              <th>Credit</th>
+              <th>Posted balance</th>
+            </tr>
+          </thead>
+          <tbody id="statement-lines"></tbody>
+        </table>
+      </div>
+      <footer class="statement-footer">
+        <div>
+          <strong id="statement-page">—</strong
+          ><small id="statement-opening">—</small>
+        </div>
+        <div class="button-row">
+          <button id="statement-prev" class="secondary">Previous page</button
+          ><button id="statement-next" class="secondary">Next page</button>
+        </div>
+      </footer>
+      <p class="statement-limit">
+        CSV downloads include every line at this cutoff, up to 20,000 lines. No
+        reservations, FX conversion or external bank matching.
+      </p>
+    </dialog>
+  </body>
+</html>

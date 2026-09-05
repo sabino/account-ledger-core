@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "strict": true,
+    "outDir": "../cmd/ledger/web",
+    "lib": ["ES2022", "DOM"],
+    "noEmitOnError": true
+  },
+  "include": ["app.ts"]
+}

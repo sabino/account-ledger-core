@@ -1,0 +1,6 @@
+# Operator-only recovery overlay. Remove after snapshot, comparison and restart.
+# Keeps the source journal and lake rows; consumers must deduplicate redelivery.
+services:
+  cdc:
+    environment:
+      DEBEZIUM_SOURCE_SNAPSHOT_MODE: when_needed

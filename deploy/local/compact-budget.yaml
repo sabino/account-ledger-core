@@ -1,0 +1,18 @@
+# Additional local experiment over budget.yaml. Not deployment approval.
+# Same services and financial/storage semantics; lower individual memory ceilings.
+services:
+  lake:
+    # 128 MiB restarted three times during the local startup exercise.
+    mem_limit: 192m
+    memswap_limit: 192m
+  cdc:
+    mem_limit: 384m
+    memswap_limit: 384m
+    environment:
+      JAVA_OPTS: "-Xms64m -Xmx224m -XX:MaxDirectMemorySize=48m -XX:ActiveProcessorCount=2"
+  clickhouse:
+    mem_limit: 192m
+    memswap_limit: 192m
+    volumes:
+      - ./deploy/local/lake/compact-server.xml:/etc/clickhouse-server/config.d/zz-budget.xml:ro
+      - ./deploy/local/lake/compact-users.xml:/etc/clickhouse-server/users.d/zz-budget.xml:ro

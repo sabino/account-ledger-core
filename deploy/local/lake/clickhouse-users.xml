@@ -1,0 +1,9 @@
+<clickhouse><profiles><default>
+  <max_threads>2</max_threads>
+  <max_memory_usage>134217728</max_memory_usage>
+  <max_execution_time>10</max_execution_time>
+  <max_result_rows>10000</max_result_rows>
+  <result_overflow_mode>throw</result_overflow_mode>
+  <max_bytes_to_read>268435456</max_bytes_to_read>
+  <log_queries>0</log_queries>
+</default></profiles></clickhouse>
