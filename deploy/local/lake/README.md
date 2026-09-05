@@ -47,7 +47,7 @@ The repeated outage exercise passed: CDC's restart counter advanced from 1 to 2,
 
 The upstream release image index referenced a missing manifest. The working upstream build is pinned to its exact digest in Compose. Its runtime reports Iceberg 1.11.0; provenance and release suitability still need review before deployment.
 
-The separate [CDC resnapshot experiment](CDC-RECOVERY.md) tests stricter offset validation and an operator-controlled recovery on the paused budget stack. An ordinary restart has passed; the full fault/recovery path has not yet been recorded as passing. Do not infer recovery from a connected slot alone.
+The separate [CDC resnapshot experiment](CDC-RECOVERY.md) passed stricter offset validation and operator-controlled recovery on the paused budget stack: a deliberately missed transfer returned, all 1,480 live and 12 assessment envelopes matched, and ordinary startup resumed from the new offsets. Identical snapshot redeliveries were deduplicated during comparison. This is the tested overlay, not a changed default or a completed checkpoint/WAL-limit drill. Do not infer recovery from a connected slot alone.
 
 ## Read-only retention inventory
 
