@@ -184,6 +184,14 @@ func main() {
 		v, e := db.Reconcile(r.Context(), "demo")
 		reply(w, v, e)
 	})
+	mux.HandleFunc("GET /api/reconciliation/external", func(w http.ResponseWriter, r *http.Request) {
+		v, e := db.CompareOpeningStatement(r.Context(), "demo", r.URL.Query().Get("scenario"))
+		if errors.Is(e, store.ErrExternalScenario) {
+			http.Error(w, e.Error(), http.StatusBadRequest)
+			return
+		}
+		reply(w, v, e)
+	})
 	decode := func(w http.ResponseWriter, r *http.Request, v any) error {
 		r.Body = http.MaxBytesReader(w, r.Body, 4096)
 		d := json.NewDecoder(r.Body)
