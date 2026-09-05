@@ -4,12 +4,12 @@ services:
     mem_limit: 64m
     memswap_limit: 64m
     cpus: 0.15
-    environment: { GOMEMLIMIT: 40MiB }
+    environment: { GOMEMLIMIT: 40MiB, CALENDAR_ENABLED: "false" }
   api-b:
     mem_limit: 64m
     memswap_limit: 64m
     cpus: 0.15
-    environment: { GOMEMLIMIT: 40MiB }
+    environment: { GOMEMLIMIT: 40MiB, CALENDAR_ENABLED: "false" }
   watchdog:
     mem_limit: 32m
     memswap_limit: 32m

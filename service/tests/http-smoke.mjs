@@ -25,7 +25,7 @@ try {
     const observed = await request("/api/status");
     assert.equal(observed.status, 200);
     state = observed.result;
-    if (state.guard_fresh && !state.guard_reason && !state.pause_reason && state.host_guard?.safe) break;
+    if (state.guard_fresh && !state.guard_reason && !state.pause_reason && state.host_guard?.safe && state.calendar?.pending === 0 && state.calendar?.blocked === 0) break;
     if (Date.now() >= deadline) throw new Error("Financial admission did not become safe within 60 seconds");
     console.log("Waiting for financial admission", JSON.stringify({
       guard_fresh: state.guard_fresh, guard_reason: state.guard_reason,
@@ -35,7 +35,7 @@ try {
   }
   const command = {
     id: randomUUID(), kind: "transfer", account: "ACC-001", destination: "ACC-002",
-    currency: "AED", amount: "0.01", booked_day: 1, value_day: 1,
+    currency: "AED", amount: "0.01", booked_day: state.calendar.day, value_day: state.calendar.day,
   };
   const [first, retry] = await Promise.all([
     request("/api/commands", command), request("/api/commands", command),

@@ -312,6 +312,13 @@
               <dt>Evidence</dt>
               <dd>Loading…</dd>
             </dl>
+            <h3>Simulation calendar</h3>
+            <div class="health-line">
+              <span>Current day</span><strong id="calendar-day">—</strong>
+            </div>
+            <p id="calendar-progress" class="note" role="status">
+              Waiting for calendar evidence…
+            </p>
           </section>
           <section class="panel transfer" id="transfer-view">
             <div class="section-heading">
@@ -336,6 +343,7 @@
                 /><span id="currency">AED</span>
               </div>
               <button type="submit">Send transfer <span>→</span></button>
+              <p id="transfer-day" class="note">Checking the simulation day…</p>
             </form>
             <p class="note">
               No money is created. Both sides commit together—or neither does.

@@ -7,6 +7,7 @@ import {
   type PreferenceStore,
 } from "./preferences.js";
 import { createStatementView } from "./statement-view.js";
+import { readCalendar, calendarMessage } from "./calendar.js";
 
 type Account = {
   id: string;
@@ -1037,6 +1038,12 @@ async function refresh() {
     $("connection").textContent = "● Live · " + status.serving_instance;
     document.body.classList.remove("connection-lost");
     $("clock").textContent = new Date().toLocaleString();
+    const calendar = readCalendar(status.calendar);
+    $("calendar-day").textContent = `Day ${calendar.day}`;
+    $("calendar-progress").textContent = calendarMessage(calendar, status.eps);
+    $("calendar-progress").classList.toggle("unhealthy", calendar.blocked > 0);
+    $("transfer-day").textContent =
+      `Current simulation day: ${calendar.day}. Refreshed again before sending.`;
     updateMetric("batches", BigInt(status.sequence).toLocaleString());
     updateMetric("pending", String(status.pending_deliveries));
     updateMetric(
@@ -1191,6 +1198,8 @@ $("transfer-form").addEventListener("submit", async (e) => {
   const button = $("transfer-form").querySelector("button")!;
   button.disabled = true;
   try {
+    const state = await api("status");
+    const calendar = readCalendar(state.calendar);
     const r: Outcome = await api("commands", {
       id: crypto.randomUUID(),
       kind: "transfer",
@@ -1198,8 +1207,8 @@ $("transfer-form").addEventListener("submit", async (e) => {
       destination: $<HTMLSelectElement>("destination").value,
       currency: a.currency,
       amount: $<HTMLInputElement>("amount").value,
-      booked_day: 1,
-      value_day: 1,
+      booked_day: calendar.day,
+      value_day: calendar.day,
     });
     $("transfer-result").textContent =
       `${r.status} · batch #${r.sequence} · ${r.instance}${r.reason ? " · " + r.reason : ""}`;

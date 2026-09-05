@@ -1,5 +1,6 @@
 name: ledger-lab
 x-delivery: &delivery
+  CALENDAR_ENABLED: "true"
   DELIVERY_SECRET: local-delivery-secret-not-for-production
   DELIVERY_URLS: http://api-a:8080/internal/notifications,http://api-b:8080/internal/notifications
 x-app: &app
