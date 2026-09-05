@@ -47,6 +47,21 @@ The repeated outage exercise passed: CDC's restart counter advanced from 1 to 2,
 
 The upstream release image index referenced a missing manifest. The working upstream build is pinned to its exact digest in Compose. Its runtime reports Iceberg 1.11.0; provenance and release suitability still need review before deployment.
 
+## Read-only retention inventory
+
+With Node 24 or newer and local Docker access:
+
+```bash
+node --test service/tests/lake-metadata.test.mjs
+node service/tests/lake-inventory.mjs ledger-lab
+```
+
+The inventory permits only the two local project names, checks container ownership, and reads at most ten table descriptions with a 4 MiB response limit each. It reports retained snapshot counts, metadata-log counts and the current snapshot's physical row/file summary. It does not expire snapshots or delete objects. Large snapshot IDs retain their exact JSON spelling; tests cover adjacent 64-bit IDs that ordinary JavaScript numbers cannot distinguish.
+
+At 21:50 on 2026-09-04 (UTC−03), the offsets table retained 167 snapshots for one current row. The journal table retained 174 snapshots and 174 current data files, totaling 1,540,211 bytes for 13,508 physical rows. These rows include other local test runs and are not a deduplicated count of demo transactions. A subsequent filesystem sample showed 96,260 KiB under `/data`; current data-file bytes do not include all historical files, metadata or storage-engine overhead. The source database was about 45.5 MB and retained-slot WAL about 2.1 MB in that sample. These are observations during a running workload, not an atomic cross-system snapshot or a growth forecast.
+
+The [upstream maintenance documentation](https://github.com/seaweedfs/seaweedfs/wiki/Iceberg-Table-Maintenance) describes a worker and admin scheduler for compaction, snapshot expiry and orphan removal. The pinned 4.45 image exposes that worker, but it is not configured or tested here. Its [versioned defaults](https://github.com/seaweedfs/seaweedfs/blob/4.45/weed/worker/tasks/iceberg/config.go) retain snapshots for seven days and keep at least five. A metadata-log limit alone does not solve retained snapshot/data growth. Maintenance must first be exercised on isolated tables, including read/restart and current-snapshot preservation, before enabling deletion on the running lake.
+
 ## Limits still required before deployment
 
 The separate [bounded allocation probe](BOUNDED-PROBE.md) verifies that the full `server` mode can enforce a finite volume-slot allowance and preserve an acknowledged object through exhaustion and restart. It does not change the default lake profile or establish a total filesystem quota.

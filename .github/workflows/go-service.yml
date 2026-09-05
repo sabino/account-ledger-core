@@ -24,7 +24,7 @@ jobs:
         run: |
           docker compose --profile test run --rm test-runner sh -c 'test -z "$(gofmt -l cmd internal)" && go vet ./... && go test -race ./...'
           docker run --rm -v "$PWD/service:/src" -w /src/web node:24.14.0-bookworm-slim npm ci
-          docker run --rm -v "$PWD/service:/src" -w /src/web node:24.14.0-bookworm-slim sh -c 'npm run check && npm run build'
+          docker run --rm -v "$PWD/service:/src" -w /src/web node:24.14.0-bookworm-slim sh -c 'npm run check && npm run build && node --test ../tests/lake-metadata.test.mjs'
       - name: Application-role concurrency tests
         run: docker compose --profile test run --rm test-runner
       - name: Check HTTP and reconciliation
