@@ -17,6 +17,10 @@ import (
 // Process locks lifecycle, identity, sorted accounts, authorization, and finally
 // the journal clock. The transaction includes the complete outcome and outbox.
 func (s *Store) Process(ctx context.Context, runID string, command Command) (Result, error) {
+	return s.process(ctx, runID, command, nil)
+}
+
+func (s *Store) process(ctx context.Context, runID string, command Command, generated *db.ClaimGeneratedCommandRow) (Result, error) {
 	if len(command.ID) < 1 || len(command.ID) > 100 || len(command.Account) > 80 ||
 		len(command.Authorization) > 100 || len(command.Destination) > 80 {
 		return Result{}, errors.New("invalid command identity")
@@ -37,6 +41,28 @@ func (s *Store) Process(ctx context.Context, runID string, command Command) (Res
 	if err != nil {
 		return Result{}, err
 	}
+	if generated != nil {
+		_, err = queries.LockGeneratedCommand(ctx, db.LockGeneratedCommandParams{
+			RunID: runID, Ordinal: generated.Ordinal, GeneratorToken: generated.GeneratorToken,
+		})
+		if err != nil {
+			return Result{}, err
+		}
+	}
+	commit := func() error {
+		if generated != nil {
+			changed, err := queries.AcknowledgeGeneratedCommand(ctx, db.AcknowledgeGeneratedCommandParams{
+				RunID: runID, Ordinal: generated.Ordinal, GeneratorToken: generated.GeneratorToken,
+			})
+			if err != nil {
+				return err
+			}
+			if changed != 1 {
+				return errors.New("generator claim no longer current")
+			}
+		}
+		return tx.Commit(ctx)
+	}
 	if err = queries.ClaimCommand(ctx, db.ClaimCommandParams{RunID: runID, ID: command.ID, Hash: hash}); err != nil {
 		return Result{}, err
 	}
@@ -50,6 +76,9 @@ func (s *Store) Process(ctx context.Context, runID string, command Command) (Res
 	if len(prior.Response) > 0 {
 		var result Result
 		err = json.Unmarshal(prior.Response, &result)
+		if err == nil && generated != nil {
+			err = commit()
+		}
 		return result, err
 	}
 	result := Result{ID: command.ID, Status: "accepted", Instance: s.Instance, Kind: command.Kind, Legs: []Leg{}}
@@ -111,7 +140,7 @@ func (s *Store) Process(ctx context.Context, runID string, command Command) (Res
 	if err = s.appendResult(ctx, queries, run, command, &result); err != nil {
 		return Result{}, err
 	}
-	if err = tx.Commit(ctx); err != nil {
+	if err = commit(); err != nil {
 		return Result{}, err
 	}
 	return result, nil

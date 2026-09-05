@@ -330,8 +330,16 @@ Codex inspected screenshots of all six routes at 1920×1080, 1100×900, and 390�
 
 The mobile inspector opened from a real journal event, its Accounting tab selected correctly, Escape closed it, and the navigation drawer opened. Moving the time-laboratory cutoff to zero produced zero balances. TypeScript and formatting checks passed. These are Chromium checks at the listed sizes, not a cross-browser accessibility audit or a load test. AI assistance remains explicit. The submitted PDF and production host were not changed.
 
-### 21:20:00 — Check · Try Lakekeeper without replacing the working lake
+### 21:18:00 — Check · Try Lakekeeper without replacing the working lake
 
 Codex tested a separate, local-only Lakekeeper catalog with its own PostgreSQL and bounded SeaweedFS storage. Catalog bootstrap, S3 validation, namespace/table creation, and ClickHouse discovery passed. Repeating the probe after a catalog restart preserved the warehouse and table identities. The table is empty: this is not evidence that CDC or recovery works with this catalog. Commands, ceilings and limitations are in `deploy/local/lake/LAKEKEEPER-PROBE.md`.
 
 A fresh read-only VPS check showed about 1,638 MiB available RAM. The existing smaller full-stack ceilings plus the 512 MiB reserve still exceed that headroom, even before adding a separate catalog. No production workloads were stopped or changed. Lakekeeper remains a candidate, not a reason to skip the deployment gate.
+
+### 21:24:00 — Act · Fence generator claims and commit the cursor with the result
+
+The generator previously relied on duplicate-command replay plus a separate ordinal acknowledgement. Codex replaced that with a five-second claim and increasing token. The financial transaction validates and locks the claim before command/account locks, then commits the result and ordinal together. Expired or superseded workers cannot start that transaction. Deliberate recipe retries still advance the cursor without adding a journal batch. Recipe-version negotiation is not part of this change; changing recipes still requires pausing and draining both replicas.
+
+Go formatting, vet, unit/race tests and the complete integration suite passed. Focused tests then also passed conflict rollback: the failed payload does not advance the cursor. Expiry/takeover tests use controlled database timestamps rather than claiming to kill a process at an exact instruction. A separate local container exercise stopped replica A; replica B advanced from ordinal 6816 to 6819, and A was restarted. Both local APIs now use the new image, and the requested rate is back to one event per second. Analytics HTTP checks passed for both currencies and all three windows, and the rebuilt overview rendered correctly in Chromium.
+
+The submitted files and VPS were not changed. This also corrects the preceding Lakekeeper entry's timestamp and removes the stale README statement that all visual QA was still pending. Codex performed the implementation and testing work.

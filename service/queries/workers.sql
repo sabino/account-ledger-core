@@ -18,15 +18,27 @@ UPDATE controls SET guard_until = CASE WHEN sqlc.arg(reason)::text = ''
   THEN now() + interval '10 seconds' ELSE now() END,
   guard_reason = sqlc.arg(reason) WHERE run_id = 'demo';
 
--- name: NextGeneratedCommand :one
-SELECT ordinal FROM controls WHERE run_id = 'demo' AND eps > 0 AND next_at <= now()
-  AND pause_reason = '' AND guard_until > now();
+-- name: ClaimGeneratedCommand :one
+UPDATE controls SET generator_token = generator_token + 1,
+  generator_until = clock_timestamp() + interval '5 seconds'
+WHERE run_id = $1 AND eps > 0 AND next_at <= clock_timestamp()
+  AND pause_reason = '' AND guard_until > clock_timestamp()
+  AND (generator_until IS NULL OR generator_until <= clock_timestamp())
+RETURNING ordinal, generator_token;
 
--- name: AcknowledgeGeneratedCommand :exec
+-- name: LockGeneratedCommand :one
+SELECT ordinal FROM controls
+WHERE run_id = $1 AND ordinal = $2 AND generator_token = $3
+  AND generator_until > clock_timestamp() AND eps > 0
+  AND pause_reason = '' AND guard_until > clock_timestamp()
+FOR UPDATE;
+
+-- name: AcknowledgeGeneratedCommand :execrows
 UPDATE controls SET ordinal = ordinal + 1,
-  eps = CASE WHEN boost_until < now() THEN 1 ELSE eps END,
-  next_at = now() + make_interval(secs => 1.0 / GREATEST(1, CASE WHEN boost_until < now() THEN 1 ELSE eps END))
-WHERE run_id = 'demo' AND ordinal = $1;
+  generator_until = NULL,
+  eps = CASE WHEN boost_until < clock_timestamp() THEN 1 ELSE eps END,
+  next_at = clock_timestamp() + make_interval(secs => 1.0 / GREATEST(1, CASE WHEN boost_until < clock_timestamp() THEN 1 ELSE eps END))
+WHERE run_id = $1 AND ordinal = $2 AND generator_token = $3;
 
 -- name: Heartbeat :exec
 INSERT INTO replica_heartbeats (id, seen_at, heap_bytes) VALUES ($1, now(), $2)

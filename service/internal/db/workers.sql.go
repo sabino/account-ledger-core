@@ -9,16 +9,26 @@ import (
 	"context"
 )
 
-const acknowledgeGeneratedCommand = `-- name: AcknowledgeGeneratedCommand :exec
+const acknowledgeGeneratedCommand = `-- name: AcknowledgeGeneratedCommand :execrows
 UPDATE controls SET ordinal = ordinal + 1,
-  eps = CASE WHEN boost_until < now() THEN 1 ELSE eps END,
-  next_at = now() + make_interval(secs => 1.0 / GREATEST(1, CASE WHEN boost_until < now() THEN 1 ELSE eps END))
-WHERE run_id = 'demo' AND ordinal = $1
+  generator_until = NULL,
+  eps = CASE WHEN boost_until < clock_timestamp() THEN 1 ELSE eps END,
+  next_at = clock_timestamp() + make_interval(secs => 1.0 / GREATEST(1, CASE WHEN boost_until < clock_timestamp() THEN 1 ELSE eps END))
+WHERE run_id = $1 AND ordinal = $2 AND generator_token = $3
 `
 
-func (q *Queries) AcknowledgeGeneratedCommand(ctx context.Context, ordinal int64) error {
-	_, err := q.db.Exec(ctx, acknowledgeGeneratedCommand, ordinal)
-	return err
+type AcknowledgeGeneratedCommandParams struct {
+	RunID          string `json:"run_id"`
+	Ordinal        int64  `json:"ordinal"`
+	GeneratorToken int64  `json:"generator_token"`
+}
+
+func (q *Queries) AcknowledgeGeneratedCommand(ctx context.Context, arg AcknowledgeGeneratedCommandParams) (int64, error) {
+	result, err := q.db.Exec(ctx, acknowledgeGeneratedCommand, arg.RunID, arg.Ordinal, arg.GeneratorToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const admit = `-- name: Admit :execrows
@@ -38,6 +48,27 @@ func (q *Queries) Admit(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const claimGeneratedCommand = `-- name: ClaimGeneratedCommand :one
+UPDATE controls SET generator_token = generator_token + 1,
+  generator_until = clock_timestamp() + interval '5 seconds'
+WHERE run_id = $1 AND eps > 0 AND next_at <= clock_timestamp()
+  AND pause_reason = '' AND guard_until > clock_timestamp()
+  AND (generator_until IS NULL OR generator_until <= clock_timestamp())
+RETURNING ordinal, generator_token
+`
+
+type ClaimGeneratedCommandRow struct {
+	Ordinal        int64 `json:"ordinal"`
+	GeneratorToken int64 `json:"generator_token"`
+}
+
+func (q *Queries) ClaimGeneratedCommand(ctx context.Context, runID string) (ClaimGeneratedCommandRow, error) {
+	row := q.db.QueryRow(ctx, claimGeneratedCommand, runID)
+	var i ClaimGeneratedCommandRow
+	err := row.Scan(&i.Ordinal, &i.GeneratorToken)
+	return i, err
 }
 
 const databaseFootprint = `-- name: DatabaseFootprint :one
@@ -102,13 +133,22 @@ func (q *Queries) ListReplicas(ctx context.Context) ([]ReplicaHeartbeat, error) 
 	return items, nil
 }
 
-const nextGeneratedCommand = `-- name: NextGeneratedCommand :one
-SELECT ordinal FROM controls WHERE run_id = 'demo' AND eps > 0 AND next_at <= now()
-  AND pause_reason = '' AND guard_until > now()
+const lockGeneratedCommand = `-- name: LockGeneratedCommand :one
+SELECT ordinal FROM controls
+WHERE run_id = $1 AND ordinal = $2 AND generator_token = $3
+  AND generator_until > clock_timestamp() AND eps > 0
+  AND pause_reason = '' AND guard_until > clock_timestamp()
+FOR UPDATE
 `
 
-func (q *Queries) NextGeneratedCommand(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, nextGeneratedCommand)
+type LockGeneratedCommandParams struct {
+	RunID          string `json:"run_id"`
+	Ordinal        int64  `json:"ordinal"`
+	GeneratorToken int64  `json:"generator_token"`
+}
+
+func (q *Queries) LockGeneratedCommand(ctx context.Context, arg LockGeneratedCommandParams) (int64, error) {
+	row := q.db.QueryRow(ctx, lockGeneratedCommand, arg.RunID, arg.Ordinal, arg.GeneratorToken)
 	var ordinal int64
 	err := row.Scan(&ordinal)
 	return ordinal, err

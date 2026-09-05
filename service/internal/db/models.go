@@ -40,6 +40,8 @@ type Control struct {
 	BudgetUsed       int32              `json:"budget_used"`
 	GuardUntil       pgtype.Timestamptz `json:"guard_until"`
 	GuardReason      string             `json:"guard_reason"`
+	GeneratorToken   int64              `json:"generator_token"`
+	GeneratorUntil   pgtype.Timestamptz `json:"generator_until"`
 }
 
 type DeliveryAttemptEvent struct {

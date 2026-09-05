@@ -40,22 +40,19 @@ func (s *Store) Guard(ctx context.Context) error {
 	return s.Queries.RefreshGuard(ctx, reason)
 }
 
-// The durable ordinal advances only after a stored result. A crash repeats the
-// same command rather than losing it. Races may consume extra admission tokens,
-// but cannot create extra financial effects or increase the requested rate.
+// A short claim expires if its worker dies. The financial transaction fences
+// that claim and commits its result and cursor together; no network IO is held
+// under the generator row lock.
 func (s *Store) Generate(ctx context.Context) error {
-	ordinal, err := s.Queries.NextGeneratedCommand(ctx)
+	claim, err := s.Queries.ClaimGeneratedCommand(ctx, "demo")
 	if err != nil {
 		return err
 	}
 	if err = s.Admit(ctx); err != nil {
 		return err
 	}
-	_, err = s.Process(ctx, "demo", GeneratedCommand(ordinal))
-	if err != nil {
-		return err
-	}
-	return s.Queries.AcknowledgeGeneratedCommand(ctx, ordinal)
+	_, err = s.process(ctx, "demo", GeneratedCommand(claim.Ordinal), &claim)
+	return err
 }
 
 func (s *Store) Workers(ctx context.Context) {
