@@ -10,7 +10,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-COPY --from=web /src/cmd/ledger/web/app.js ./cmd/ledger/web/app.js
+COPY --from=web /src/cmd/ledger/web/*.js ./cmd/ledger/web/
 RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /ledger ./cmd/ledger
 
 FROM scratch

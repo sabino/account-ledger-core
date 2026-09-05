@@ -23,8 +23,18 @@
     <aside class="sidebar" id="navigation" aria-label="Application navigation">
       <a class="brand" href="#overview"
         ><span class="brand-mark">◈</span
-        ><span>Ledger Lab<small>ACCOUNTING EXPERIMENT</small></span></a
+        ><span>Ledger Lab<small>Accounting experiment</small></span></a
       >
+      <button
+        id="sidebar-toggle"
+        class="sidebar-toggle secondary"
+        aria-controls="navigation"
+        aria-expanded="true"
+        aria-label="Collapse sidebar"
+      >
+        <span aria-hidden="true">⇤</span
+        ><span class="collapse-label">Collapse sidebar</span>
+      </button>
       <nav>
         <a href="#overview" data-route="overview" title="Overview"
           ><span class="nav-icon" aria-hidden="true">◫</span
@@ -74,7 +84,7 @@
           ☰
         </button>
         <div class="heading">
-          <h1>Ledger Lab</h1>
+          <h1 id="view-title" tabindex="-1">Overview</h1>
           <p id="view-subtitle">
             Live double-entry. Every decision leaves evidence.
           </p>
@@ -92,9 +102,40 @@
           <span id="connection" role="status">Connecting…</span
           ><small id="clock">—</small>
         </div>
+        <div class="theme-picker" role="group" aria-label="Color theme">
+          <button
+            class="theme-choice"
+            data-theme-choice="light"
+            aria-label="Light theme"
+            title="Light theme"
+            aria-pressed="false"
+          >
+            ☀
+          </button>
+          <button
+            class="theme-choice"
+            data-theme-choice="dark"
+            aria-label="Dark theme"
+            title="Dark theme"
+            aria-pressed="false"
+          >
+            ☾
+          </button>
+          <button
+            class="theme-choice"
+            data-theme-choice="system"
+            aria-label="System theme"
+            title="System theme"
+            aria-pressed="true"
+          >
+            ◐
+          </button>
+        </div>
       </header>
       <div class="workspace-toolbar">
-        <h2 id="view-title" tabindex="-1">Overview</h2>
+        <span id="view-context" class="view-context"
+          >Demo ledger / live overview</span
+        >
         <div class="view-controls">
           <label
             >Currency<select id="view-currency">
@@ -164,7 +205,7 @@
           <section class="panel simulation" id="simulation-panel">
             <div class="section-heading">
               <h2>Shared simulation</h2>
-              <span class="badge">SYNTHETIC</span>
+              <span class="badge">Synthetic</span>
             </div>
             <div class="rate">
               <strong id="rate">—</strong><span>events / second</span>
@@ -216,7 +257,7 @@
           </section>
           <section class="panel" id="accounts-view">
             <div class="section-heading">
-              <h2>Customer accounts</h2>
+              <h2>Customer balances</h2>
               <span id="account-count" class="badge">—</span>
             </div>
             <strong id="customer-total" class="stat">—</strong>
@@ -224,6 +265,32 @@
             <div id="account-list" class="account-list"></div>
             <p class="note panel-footnote">
               Current snapshot. Each ledger account holds one currency.
+            </p>
+          </section>
+          <section class="panel account-directory" id="account-directory">
+            <div class="section-heading">
+              <div>
+                <h2>Account directory</h2>
+                <p class="note">
+                  Balances are current. Open an account for its latest journal
+                  entries.
+                </p>
+              </div>
+              <label class="filter"
+                ><span class="sr-only">Account group</span
+                ><select id="account-group">
+                  <option value="all">All account groups</option>
+                  <option value="customer">Customer accounts</option>
+                  <option value="internal">Internal accounts</option>
+                </select></label
+              >
+            </div>
+            <div id="account-groups" class="account-groups">
+              <p class="note">Loading accounts…</p>
+            </div>
+            <p class="note">
+              Customer deposits are liabilities of the simulated bank. Reserved
+              funds are part of a customer balance, not another posted account.
             </p>
           </section>
           <section class="panel health-panel" id="health-panel">
@@ -381,21 +448,43 @@
           </aside>
           <section class="panel flow" id="system-view">
             <div class="section-heading">
-              <h2>One transaction, two service replicas</h2>
-              <span class="badge">SERVICE MODEL</span>
+              <h2>Request, commit, delivery</h2>
+              <span class="badge">Conceptual flow</span>
             </div>
-            <div class="node">Browser request</div>
-            <div class="fork-line">↓ Existing load balancer ↓</div>
-            <div class="node">Either Go replica</div>
-            <div class="fork-line">↓ Account locks + commit ordering ↓</div>
-            <div class="node database">
-              PostgreSQL<span>Journal · balances · idempotency · outbox</span>
+            <div class="service-path">
+              <div class="node">Browser request<span>Public API</span></div>
+              <span class="path-arrow" aria-hidden="true">→</span>
+              <div class="node">
+                Either Go replica<span>Existing load balancer</span>
+              </div>
+              <span class="path-arrow" aria-hidden="true">→</span>
+              <div class="node database">
+                PostgreSQL<span
+                  >Account locks + atomic journal, balances and outbox</span
+                >
+              </div>
+              <span class="path-arrow" aria-hidden="true">→</span>
+              <div class="node">
+                Notification inbox<span
+                  >Signed HTTP, retries and deduplication</span
+                >
+              </div>
             </div>
-            <div class="fork-line">↓ Signed HTTP · retry · deduplication ↓</div>
-            <div class="node">Notification inbox</div>
             <p class="note">
               Two applications, one database. Instance recovery is not database
               high availability.
+            </p>
+          </section>
+          <section class="panel" id="cdc-panel">
+            <h2>Reporting source connection</h2>
+            <dl id="cdc-facts" class="decision-facts">
+              <dt>CDC source</dt>
+              <dd>Not observed yet</dd>
+            </dl>
+            <p class="note">
+              A connected PostgreSQL slot is not proof that lake data is
+              current. This panel does not measure Iceberg or ClickHouse
+              freshness.
             </p>
           </section>
           <section class="panel" id="recovery-panel">

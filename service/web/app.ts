@@ -1,8 +1,18 @@
+import {
+  readPreference,
+  writePreference,
+  themePreference,
+  resolvedTheme,
+  sidebarCollapsed,
+  type PreferenceStore,
+} from "./preferences.js";
+
 type Account = {
   id: string;
   name: string;
   currency: string;
   customer: boolean;
+  class: string;
   balance_minor: string;
   held_minor: string;
 };
@@ -58,6 +68,61 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 let accounts: Account[] = [];
 const viewCurrency = () => $<HTMLSelectElement>("view-currency").value;
+let preferenceStore: PreferenceStore | undefined;
+try {
+  preferenceStore = window.localStorage;
+} catch {
+  /* Browser privacy settings can deny storage entirely. */
+}
+const systemColor = matchMedia("(prefers-color-scheme: dark)");
+let preferredTheme = themePreference(
+  readPreference(preferenceStore, "ledger.theme"),
+);
+function applyTheme() {
+  document.documentElement.dataset.theme = resolvedTheme(
+    preferredTheme,
+    systemColor.matches,
+  );
+  document
+    .querySelectorAll<HTMLButtonElement>("[data-theme-choice]")
+    .forEach((button) =>
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.themeChoice === preferredTheme),
+      ),
+    );
+}
+document
+  .querySelectorAll<HTMLButtonElement>("[data-theme-choice]")
+  .forEach((button) =>
+    button.addEventListener("click", () => {
+      preferredTheme = themePreference(button.dataset.themeChoice || null);
+      writePreference(preferenceStore, "ledger.theme", preferredTheme);
+      applyTheme();
+    }),
+  );
+systemColor.addEventListener("change", applyTheme);
+applyTheme();
+function applySidebar(collapsed: boolean) {
+  document.body.classList.toggle("sidebar-collapsed", collapsed);
+  $("sidebar-toggle").setAttribute("aria-expanded", String(!collapsed));
+  $("sidebar-toggle").setAttribute(
+    "aria-label",
+    collapsed ? "Expand sidebar" : "Collapse sidebar",
+  );
+}
+applySidebar(
+  sidebarCollapsed(readPreference(preferenceStore, "ledger.sidebar")),
+);
+$("sidebar-toggle").addEventListener("click", () => {
+  const collapsed = !document.body.classList.contains("sidebar-collapsed");
+  applySidebar(collapsed);
+  writePreference(
+    preferenceStore,
+    "ledger.sidebar",
+    collapsed ? "collapsed" : "expanded",
+  );
+});
 type Bucket = {
   at: string;
   total: number;
@@ -77,9 +142,13 @@ let analyticsRequest = 0;
 let analyticsUpdated = 0;
 
 // Routes move the existing controls, never clone their state or reload the app.
-const routes: Record<string, { title: string; panels: string[] }> = {
+const routes: Record<
+  string,
+  { title: string; subtitle: string; panels: string[] }
+> = {
   overview: {
     title: "Overview",
+    subtitle: "Live accounting, recorded decisions and the system behind them.",
     panels: [
       "simulation-panel",
       "chart-panel",
@@ -91,23 +160,41 @@ const routes: Record<string, { title: string; panels: string[] }> = {
       "inspector-shell",
     ],
   },
-  journal: { title: "Journal", panels: ["audit", "inspector-shell"] },
-  accounts: { title: "Accounts", panels: ["accounts-view", "totals-panel"] },
+  journal: {
+    title: "Journal",
+    subtitle: "Inspect what was recorded, and why money did or did not move.",
+    panels: ["audit", "inspector-shell"],
+  },
+  accounts: {
+    title: "Accounts",
+    subtitle:
+      "Customer deposits and their internal counterparts, one currency at a time.",
+    panels: ["account-directory", "accounts-view"],
+  },
   transfers: {
     title: "Transfers",
+    subtitle:
+      "Move synthetic money. Both sides commit together, or neither does.",
     panels: ["transfer-view", "audit", "inspector-shell"],
   },
   system: {
     title: "System & recovery",
+    subtitle: "Observed service state, guarded controls and accounting checks.",
     panels: [
       "system-view",
       "health-panel",
+      "cdc-panel",
       "recovery-panel",
       "reconciliation-panel",
       "scope-panel",
     ],
   },
-  time: { title: "Time laboratory", panels: ["time-view", "scope-panel"] },
+  time: {
+    title: "Time laboratory",
+    subtitle:
+      "One immutable record history. Different views of what was known.",
+    panels: ["time-view", "scope-panel"],
+  },
 };
 function closeInspector() {
   $("inspector-shell").classList.remove("drawer-open");
@@ -153,23 +240,48 @@ function route() {
   navigation(false);
   const grid = $("route-grid"),
     storage = $("panel-storage");
-  Array.from(grid.children).forEach((panel) => storage.append(panel));
-  routes[selected].panels.forEach((id) => grid.append($(id)));
+  grid.querySelectorAll(".panel").forEach((panel) => storage.append(panel));
+  grid.replaceChildren();
+  if (selected === "system") {
+    grid.append($("system-view"));
+    for (const ids of [
+      ["health-panel"],
+      ["cdc-panel", "recovery-panel"],
+      ["reconciliation-panel", "scope-panel"],
+    ]) {
+      const stack = document.createElement("div");
+      stack.className = "system-stack";
+      ids.forEach((id) => stack.append($(id)));
+      grid.append(stack);
+    }
+  } else routes[selected].panels.forEach((id) => grid.append($(id)));
   document.body.dataset.view = selected;
   $("view-title").textContent = routes[selected].title;
+  $("view-subtitle").textContent = routes[selected].subtitle;
+  $("view-context").textContent =
+    selected === "time"
+      ? "Isolated six-day assessment replay"
+      : "Demo ledger / " + routes[selected].title.toLowerCase();
+  $("view-window").closest("label")!.hidden = selected !== "overview";
+  $("view-currency").closest("label")!.hidden =
+    selected === "time" || selected === "system";
   grid.setAttribute("aria-label", routes[selected].title + " workspace");
   document.title = `${routes[selected].title} · Ledger Lab`;
   document
     .querySelectorAll<HTMLAnchorElement>("[data-route]")
     .forEach((link) => {
+      link.setAttribute("aria-label", routes[link.dataset.route!].title);
       if (link.dataset.route === selected)
         link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
     });
   window.scrollTo({ top: 0 });
+  $("workspace").scrollTop = 0;
+  if (selected === "accounts") accountDirectory();
 }
 window.addEventListener("hashchange", route);
 matchMedia("(min-width: 1280px)").addEventListener("change", closeInspector);
+matchMedia("(min-width: 1700px)").addEventListener("change", closeInspector);
 matchMedia("(min-width: 1024px)").addEventListener("change", () =>
   navigation(false),
 );
@@ -289,9 +401,15 @@ function bars(id: string, rows: { label: string; value: number }[]) {
     rows
       .map(
         (row) =>
-          `<div><div class="bar-label"><span>${esc(row.label)}</span><strong>${row.value.toLocaleString()}</strong></div><div class="bar-track"><span style="width:${total ? (100 * row.value) / total : 0}%"></span></div></div>`,
+          `<div><div class="bar-label"><span>${esc(row.label)}</span><strong>${row.value.toLocaleString()}</strong></div><div class="bar-track"><span></span></div></div>`,
       )
       .join("") || '<p class="note">No recorded decisions in this window.</p>';
+  // Property assignment is CSP-compatible; inline HTML style attributes are not.
+  $(id)
+    .querySelectorAll<HTMLElement>(".bar-track span")
+    .forEach((bar, index) => {
+      bar.style.width = `${total ? (100 * rows[index].value) / total : 0}%`;
+    });
 }
 async function analytics() {
   const request = ++analyticsRequest;
@@ -356,7 +474,168 @@ function accountSummary() {
         `<div class="account-row"><button data-account="${esc(a.id)}">${esc(a.name)}<small>${esc(a.id)}</small></button><span>${money(a.balance_minor, currency)}</span></div>`,
     )
     .join("");
+  if (document.body.dataset.view === "accounts") accountDirectory();
 }
+
+const directoryOpen = new Set<string>();
+const accountEntryCache = new Map<
+  string,
+  { rows: JournalRow[]; fetchedAt: string; error?: string }
+>();
+const accountEntryLoads = new Set<string>();
+function accountDirectory() {
+  const focused = document.activeElement as HTMLElement | null;
+  const focusedAccount =
+    focused?.closest<HTMLElement>(".account-item")?.dataset.account;
+  const focusedAction = focused?.dataset.accountRefresh
+    ? "refresh"
+    : focused?.dataset.accountJournal
+      ? "journal"
+      : focused?.tagName === "SUMMARY"
+        ? "summary"
+        : "";
+  const selected = accounts.filter((a) => a.currency === viewCurrency());
+  const filter = $<HTMLSelectElement>("account-group").value;
+  const groups = [
+    { name: "Customer deposits", test: (a: Account) => a.customer },
+    {
+      name: "Settlement assets",
+      test: (a: Account) => !a.customer && a.class === "asset",
+    },
+    {
+      name: "Internal liabilities",
+      test: (a: Account) => !a.customer && a.class === "liability",
+    },
+    {
+      name: "Income",
+      test: (a: Account) => !a.customer && a.class === "income",
+    },
+    {
+      name: "Expenses",
+      test: (a: Account) => !a.customer && a.class === "expense",
+    },
+  ];
+  const host = $("account-groups");
+  host.replaceChildren();
+  groups.forEach((group) => {
+    const members = selected.filter(
+      (a) =>
+        group.test(a) &&
+        (filter === "all" ||
+          (filter === "customer" ? a.customer : !a.customer)),
+    );
+    if (!members.length) return;
+    const section = document.createElement("section");
+    section.className = "account-group";
+    section.innerHTML = `<h3>${esc(group.name)}<small>${members.length} accounts / ${esc(viewCurrency())}</small></h3>`;
+    members.forEach((account) => {
+      const detail = document.createElement("details");
+      detail.className = "account-item";
+      detail.dataset.account = account.id;
+      detail.open = directoryOpen.has(account.id);
+      const available =
+        BigInt(account.balance_minor) - BigInt(account.held_minor);
+      detail.innerHTML = `<summary><span class="account-identity"><strong>${esc(account.name)}</strong><small>${esc(account.id)} / ${esc(account.class)}</small></span><span class="account-amount">${money(account.balance_minor, account.currency)}<small>Posted${account.customer ? ` · ${money(account.held_minor, account.currency)} reserved` : ""}</small></span></summary><div class="account-expanded"><p>${account.customer ? `${money(available.toString(), account.currency)} available. Reserved funds are already included in the posted balance.` : "Internal account; not a customer spendable balance."}</p><div class="button-row"><button class="secondary" data-account-refresh="${esc(account.id)}">Refresh recent entries</button><button class="secondary" data-account-journal="${esc(account.id)}">View in journal</button></div><div class="account-entries" data-account-entries="${esc(account.id)}"></div></div>`;
+      detail.addEventListener("toggle", () => {
+        if (detail.open) {
+          directoryOpen.add(account.id);
+          if (!accountEntryCache.has(account.id))
+            void loadAccountEntries(account.id);
+        } else directoryOpen.delete(account.id);
+      });
+      section.append(detail);
+    });
+    host.append(section);
+  });
+  if (!host.children.length)
+    host.innerHTML =
+      '<div class="empty-state"><h3>No matching accounts</h3><p>Select another account group or currency.</p></div>';
+  selected.forEach((account) => renderAccountEntries(account.id));
+  if (focusedAccount && focusedAction) {
+    const restored = Array.from(
+      host.querySelectorAll<HTMLElement>(".account-item"),
+    ).find((el) => el.dataset.account === focusedAccount);
+    restored
+      ?.querySelector<HTMLElement>(
+        focusedAction === "summary"
+          ? "summary"
+          : focusedAction === "refresh"
+            ? "[data-account-refresh]"
+            : "[data-account-journal]",
+      )
+      ?.focus({ preventScroll: true });
+  }
+}
+function renderAccountEntries(account: string) {
+  const target = Array.from(
+    document.querySelectorAll<HTMLElement>("[data-account-entries]"),
+  ).find((el) => el.dataset.accountEntries === account);
+  if (!target) return;
+  const cached = accountEntryCache.get(account);
+  if (accountEntryLoads.has(account)) {
+    target.textContent = "Loading recent journal entries…";
+    return;
+  }
+  if (!cached) {
+    target.textContent = "Open this account to load its recent entries.";
+    return;
+  }
+  if (cached.error) {
+    target.textContent = `Could not load recent entries. ${cached.error} Use Refresh recent entries to retry.`;
+    return;
+  }
+  target.innerHTML =
+    `<p class="note">Latest ${cached.rows.length} returned batches · fetched ${esc(cached.fetchedAt)}. Snapshot, not full account history.</p>` +
+    (cached.rows
+      .map((row) => {
+        const amounts = row.result.legs
+          .filter((leg) => leg.account === account)
+          .map(
+            (leg) =>
+              `${BigInt(leg.units) > 0n ? "Debit" : "Credit"} ${money((BigInt(leg.units) < 0n ? -BigInt(leg.units) : BigInt(leg.units)).toString(), leg.currency)}`,
+          )
+          .join("; ");
+        return `<div class="account-entry"><span class="entry-title"><strong>#${esc(row.result.sequence)} ${esc(row.result.kind)}</strong><span class="${esc(row.result.status)}">${esc(row.result.status)}</span></span><small>${esc(new Date(row.at).toLocaleString())}</small><span>${esc(amounts || "No monetary leg on this account")}</span></div>`;
+      })
+      .join("") ||
+      '<p class="note">No recent batches returned for this account.</p>');
+}
+async function loadAccountEntries(account: string) {
+  if (accountEntryLoads.has(account)) return;
+  accountEntryLoads.add(account);
+  renderAccountEntries(account);
+  try {
+    const rows: JournalRow[] = await api(
+      "journal?account=" + encodeURIComponent(account),
+    );
+    accountEntryCache.set(account, {
+      rows,
+      fetchedAt: new Date().toLocaleTimeString(),
+    });
+  } catch (error) {
+    accountEntryCache.set(account, {
+      rows: [],
+      fetchedAt: "",
+      error: (error as Error).message,
+    });
+  } finally {
+    accountEntryLoads.delete(account);
+    renderAccountEntries(account);
+  }
+}
+$("account-group").addEventListener("change", accountDirectory);
+$("account-groups").addEventListener("click", (event) => {
+  const target = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button",
+  );
+  if (target?.dataset.accountRefresh)
+    void loadAccountEntries(target.dataset.accountRefresh);
+  if (target?.dataset.accountJournal) {
+    $<HTMLSelectElement>("statement").value = target.dataset.accountJournal;
+    location.hash = "journal";
+    void journal().catch((error) => toast(error.message));
+  }
+});
 const money = (minor: string, currency: string) => {
   const p = currency === "BHD" ? 3 : 2;
   let n = BigInt(minor);
@@ -648,7 +927,12 @@ function inspectEvent(row: JournalRow, open = true) {
           el.dataset.detailSection !== "shared" &&
           el.dataset.detailSection !== detailTab),
     );
-  if (open && matchMedia("(max-width: 1279px)").matches) {
+  if (
+    open &&
+    (matchMedia("(max-width: 1279px)").matches ||
+      (document.body.dataset.view === "transfers" &&
+        matchMedia("(max-width: 1699px)").matches))
+  ) {
     returnFocus = document.activeElement as HTMLElement;
     $("inspector-shell").classList.add("drawer-open");
     $("inspector-shell").setAttribute("role", "dialog");
@@ -782,6 +1066,29 @@ async function refresh() {
         ]
       : [["Evidence", "Unavailable"]];
     $("host-facts").innerHTML = hostRows
+      .map(([name, value]) => `<dt>${esc(name)}</dt><dd>${esc(value)}</dd>`)
+      .join("");
+    const cdc = status.cdc_source;
+    const cdcLabels: Record<string, string> = {
+      absent: "Slot missing",
+      inactive: "Consumer disconnected",
+      streaming: "Consumer connected",
+      invalidated: "Slot invalidated",
+    };
+    const cdcRows = cdc
+      ? [
+          ["CDC source", cdcLabels[cdc.state] || "Unknown state"],
+          [
+            "Retained WAL",
+            cdc.retained_wal_bytes === null
+              ? "Unknown"
+              : `${BigInt(cdc.retained_wal_bytes).toLocaleString()} bytes`,
+          ],
+          ["WAL status", cdc.wal_status || "Not reported"],
+          ["Lake freshness", "Not measured here"],
+        ]
+      : [["CDC source", "Unavailable from this service version"]];
+    $("cdc-facts").innerHTML = cdcRows
       .map(([name, value]) => `<dt>${esc(name)}</dt><dd>${esc(value)}</dd>`)
       .join("");
     $("replicas").innerHTML = status.replicas

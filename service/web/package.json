@@ -1,10 +1,12 @@
 {
   "name": "ledger-lab-web",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "tsc",
-    "format": "prettier --write app.ts package.json tsconfig.json ../cmd/ledger/web/index.html ../cmd/ledger/web/style.css",
-    "check": "prettier --check app.ts package.json tsconfig.json ../cmd/ledger/web/index.html ../cmd/ledger/web/style.css"
+    "format": "prettier --write *.ts *.mjs package.json tsconfig.json ../cmd/ledger/web/index.html ../cmd/ledger/web/style.css",
+    "check": "prettier --check *.ts *.mjs package.json tsconfig.json ../cmd/ledger/web/index.html ../cmd/ledger/web/style.css",
+    "test": "node --test preferences.test.mjs"
   },
   "devDependencies": {
     "prettier": "3.6.2",

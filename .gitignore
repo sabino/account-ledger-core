@@ -5,4 +5,5 @@ __pycache__/
 .pyright/
 service/web/node_modules/
 service/cmd/ledger/web/app.js
+service/cmd/ledger/web/preferences.js
 .env
